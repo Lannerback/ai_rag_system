@@ -1,0 +1,49 @@
+# Environment variables
+.env
+
+# Python virtual environments
+venv/
+env/
+ENV/
+
+# Conda environment
+conda-env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Vector store files
+*.faiss
+*.pkl
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+docs/
+
+vector_store/
+ideasForReadme
