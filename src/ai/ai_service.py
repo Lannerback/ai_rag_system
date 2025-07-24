@@ -1,43 +1,26 @@
 """Facade for AI document loading, embedding, and retrieval logic."""
-import os
 from dotenv import load_dotenv
-from langchain_openai import AzureChatOpenAI
 from src.common.APIException import APIException
-
-from .document_loader import DocumentLoader
 from src.ai.base_llm import BaseLLM
 from src.ai.base_embedder import BaseEmbedder
 
-from .azure.azure_openai_llm import AzureLLM
-from .azure.azure_embeddings import AzureEmbeddingStore
 from src.ai.embedder_service import EmbedderService
+
+from .document_loader import DocumentLoader
 
 load_dotenv()
 
 class AiService:    
 
-    def __init__(self):
-        self.__llm: BaseLLM = self._build_llm()
-        self.__loader: DocumentLoader = self._build_loader()
-        self.__store: BaseEmbedder = self._build_store()    
-        self.__embedder_service: EmbedderService = self._build_embedder_service(self.__store)
+    def __init__(self,llm: BaseLLM,loader: DocumentLoader,embedder_store: BaseEmbedder):
+        self.__llm: BaseLLM = llm
+        self.__loader: DocumentLoader = loader
+        self.embedder_store: BaseEmbedder = embedder_store   
+        self.__embedder_service: EmbedderService = EmbedderService(self.embedder_store)
         
-            
+        # Initialize the vector store from documents            
         self._initialize_store()
-        
-
-    
-    def _build_llm(self) -> AzureChatOpenAI:
-        return AzureLLM()
-    
-    def _build_loader(self) -> DocumentLoader:
-        return DocumentLoader()
-
-    def _build_store(self) -> BaseEmbedder:        
-        return AzureEmbeddingStore()
-    
-    def _build_embedder_service(self,store) -> EmbedderService:
-        return EmbedderService(store)
+               
 
     def _initialize_store(self):
         """Load or build the vector store from documents."""
@@ -53,6 +36,7 @@ class AiService:
         """Retrieve relevant documents for a query."""
         return self.__embedder_service.search(query, k=k)
 
+    #TODO: read system prompt and other configuration from a configuration file
     def answer_question(self, question: str, k: int = 3) -> dict:
         """Answer a question using the LLM and relevant docs."""
         relevant_docs = self._get_relevant_docs(question, k=k)

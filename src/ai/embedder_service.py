@@ -8,6 +8,7 @@ import faiss
 
 from src.ai.base_embedder import BaseEmbedder
 
+# TODO: Consider using a configuration file for paths
 EMBEDDINGS_INDEX_PATH = "vector_store/faiss.index"
 EMBEDDINGS_METADATA_PATH = "vector_store/metadata.pkl"
 
