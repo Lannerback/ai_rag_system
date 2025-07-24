@@ -13,8 +13,7 @@ class EmbeddingStore:
     def __init__(self):
         os.makedirs("vector_store", exist_ok=True)
         self.dimension = 1536
-        #TODO: change to cosine similarity
-        # Use cosine similarity (normalize vectors, then use IndexFlatIP)
+      
         self.index = faiss.IndexFlatIP(self.dimension)
         self.documents: List[Dict] = []
         self.embeddings = AzureOpenAIEmbeddings(
