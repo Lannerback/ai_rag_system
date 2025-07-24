@@ -5,19 +5,21 @@ from langchain_openai import AzureChatOpenAI
 from src.common.APIException import APIException
 
 from .document_loader import DocumentLoader
-from .embeddings import EmbeddingStore
+from src.ai.base_llm import BaseLLM
+from src.ai.base_embedder import BaseEmbedder
+
+from .azure.azure_openai_llm import AzureLLM
+from .azure.azure_embeddings import AzureEmbeddingStore
 
 
 load_dotenv()
 
-class AiFacade:
-    _EMBEDDINGS_INDEX_PATH = "vector_store/faiss.index"
-    _EMBEDDINGS_METADATA_PATH = "vector_store/metadata.pkl"
+class AiFacade:    
 
     def __init__(self):
-        self.__llm = self._build_llm()
-        self.__loader = self._build_loader()
-        self.__store = self._build_store()    
+        self.__llm: BaseLLM = AzureLLM()
+        self.__loader: DocumentLoader = self._build_loader()
+        self.__store: BaseEmbedder = self._build_store()    
             
         self._initialize_store()
         
@@ -33,12 +35,12 @@ class AiFacade:
             max_tokens=500
         )    
     
-    def _build_loader(self):
+    def _build_loader(self) -> DocumentLoader:
         return DocumentLoader()
 
 
-    def _build_store(self):        
-        return EmbeddingStore()
+    def _build_store(self) -> BaseEmbedder:        
+        return AzureEmbeddingStore()
 
     def _initialize_store(self):
         """Load or build the vector store from documents."""

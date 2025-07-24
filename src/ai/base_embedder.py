@@ -1,30 +1,33 @@
-"""Module for handling document embeddings and vector storage."""
+# src/embeddings/base_embedder.py
+from abc import ABC, abstractmethod
 import os
 import pickle
+import faiss
 from typing import List, Dict
 import numpy as np
-import faiss
-from langchain_openai import AzureOpenAIEmbeddings
 
 EMBEDDINGS_INDEX_PATH = "vector_store/faiss.index"
 EMBEDDINGS_METADATA_PATH = "vector_store/metadata.pkl"
 
-class EmbeddingStore:
+class BaseEmbedder(ABC):
     def __init__(self):
-        os.makedirs("vector_store", exist_ok=True)
-        self.dimension = 1536
-      
-        self.index = faiss.IndexFlatIP(self.dimension)
-        self.documents: List[Dict] = []
-        self.embeddings = AzureOpenAIEmbeddings(
-            azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
-            openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15"),
-            chunk_size=1000
-        )
+        self.index = None
+        self.documents = []
 
-    def load_from_disk(self, index_path=EMBEDDINGS_INDEX_PATH, metadata_path=EMBEDDINGS_METADATA_PATH):
+    @abstractmethod
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        pass
+
+    @abstractmethod
+    def embed_query(self, query: str) -> list[float]:
+        pass
+
+    @property
+    @abstractmethod
+    def dimension(self) -> int:
+        pass
+
+    def load_from_disk(self, index_path=EMBEDDINGS_INDEX_PATH, metadata_path=EMBEDDINGS_METADATA_PATH) -> bool:
         if os.path.exists(index_path) and os.path.exists(metadata_path):
             self.index = faiss.read_index(index_path)
             with open(metadata_path, "rb") as f:
@@ -36,13 +39,12 @@ class EmbeddingStore:
         faiss.write_index(self.index, index_path)
         with open(metadata_path, "wb") as f:
             pickle.dump(self.documents, f)
-
+            
     def add_documents(self, texts: List[str], metadatas: List[Dict] = None):
         """Add documents to the vector store and persist them."""
         if not texts:
             return
-        embeddings = self.embeddings.embed_documents(texts)
-        # Normalize embeddings for cosine similarity
+        embeddings = self.embed_documents(texts)
         embeddings_np = np.array(embeddings).astype('float32')
         faiss.normalize_L2(embeddings_np)
         self.index.add(embeddings_np)
@@ -53,14 +55,10 @@ class EmbeddingStore:
                 "content": text,
                 "metadata": metadata
             })
-        # Save index and metadata
-        faiss.write_index(self.index, EMBEDDINGS_INDEX_PATH)
-        with open(EMBEDDINGS_METADATA_PATH, "wb") as f:
-            pickle.dump(self.documents, f)
-
+        self.save_to_disk()
+        
     def search(self, query: str, k: int = 3) -> List[Dict]:
-        """Search for most similar documents."""
-        query_embedding = self.embeddings.embed_query(query)
+        query_embedding = self.embed_query(query)
         query_np = np.array([query_embedding]).astype('float32')
         faiss.normalize_L2(query_np)
         D, I = self.index.search(query_np, k)
