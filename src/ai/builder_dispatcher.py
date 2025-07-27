@@ -11,6 +11,8 @@ from src.ai.base_embedder import BaseEmbedder
 from .azure.azure_openai_llm import AzureLLM
 from .azure.azure_embeddings import AzureEmbeddingStore
 from src.ai.embedder_service import EmbedderService
+from src.ai.gemini.gemini_embeddings import GeminiEmbeddingStore
+from src.ai.gemini.gemini_llm import GeminiLLM
 
 load_dotenv()
 
@@ -24,13 +26,13 @@ class BuilderDsipatcher:
 
     #TODO: implement logic to build the LLM based on the environment
     def _build_llm(self) -> AzureChatOpenAI:
-        return AzureLLM()
+        return GeminiLLM()
     
     def _build_loader(self) -> DocumentLoader:
         return DocumentLoader()
 
     def _build_store(self) -> BaseEmbedder:        
-        return AzureEmbeddingStore()
+        return GeminiEmbeddingStore()
     
     def _build_embedder_service(self,store) -> EmbedderService:
         return EmbedderService(store)

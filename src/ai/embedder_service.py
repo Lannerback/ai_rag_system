@@ -1,10 +1,13 @@
 """Service class that manages the load, save and search operations for embeddings using FAISS.
 """
 import os
+import time
+import logging
 from typing import List, Dict
 import pickle
 import numpy as np
 import faiss
+
 
 from src.ai.base_embedder import BaseEmbedder
 
@@ -33,7 +36,12 @@ class EmbedderService():
         """Add documents to the vector store and persist them."""
         if not texts:
             return
+        logging.debug(f"🔹 Adding {len(texts)} documents to the vector store...")
+        start_time = time.time()  # ⏱ Start timer
         embeddings = self.__base_embedder.embed_documents(texts)
+        duration = time.time() - start_time  # ⏱ End timer
+        logging.debug(f"🔹 embed_documents() took {duration:.2f} seconds for {len(texts)} texts")
+
         embeddings_np = np.array(embeddings).astype('float32')
         faiss.normalize_L2(embeddings_np)
         self.__base_embedder.index.add(embeddings_np)

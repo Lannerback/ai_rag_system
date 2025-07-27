@@ -16,4 +16,5 @@ class AzureLLM(BaseLLM):
         )
 
     def invoke(self, messages: list[dict]):
-        return self.__llm.invoke(messages)
+        response = self.__llm.invoke(messages)
+        return response.content

@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.DEBUG,  # or INFO
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 app = FastAPI(title="AI Assistant",)
 

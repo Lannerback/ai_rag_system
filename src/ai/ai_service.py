@@ -58,6 +58,6 @@ class AiService:
             {"role": "user", "content": prompt}
         ])
         return {
-            "answer": response.content,
-            "sources": [doc["metadata"] for doc in relevant_docs]
+            "answer": response,
+            "sources": list({frozenset(doc["metadata"].items()): doc["metadata"] for doc in relevant_docs}.values())
         }
