@@ -8,10 +8,10 @@ from src.common.config import CONFIG
 class AzureLLM(BaseLLM):
     def __init__(self):
         self.__llm = AzureChatOpenAI(
-            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+            azure_deployment=CONFIG["azure"]["deployment"],
             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", CONFIG["llm"]["azure"]["api_version"]),
+            openai_api_version=CONFIG["llm"]["azure"]["api_version"],
             temperature=CONFIG["llm"]["azure"]["temperature"],
             max_tokens=CONFIG["llm"]["azure"]["max_tokens"]
         )
