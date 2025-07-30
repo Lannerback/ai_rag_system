@@ -46,4 +46,5 @@ temp/
 docs/
 
 vector_store/
-ideasForReadme
+vector_store_azure
+vector_store_gemini

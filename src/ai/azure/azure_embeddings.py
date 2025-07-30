@@ -7,24 +7,24 @@ import faiss
 from langchain_openai import AzureOpenAIEmbeddings
 
 from src.ai.base_embedder import BaseEmbedder
-
-EMBEDDINGS_INDEX_PATH = "vector_store/faiss.index"
-EMBEDDINGS_METADATA_PATH = "vector_store/metadata.pkl"
+from src.common.config import CONFIG
 
 class AzureEmbeddingStore(BaseEmbedder):
     def __init__(self):
         super().__init__()
-        self._dimension = 1536
-        os.makedirs("vector_store", exist_ok=True)
+        self._dimension = CONFIG["embeddings"]["azure"]["dimension"]
+        
+        vector_store_dir = os.path.dirname(CONFIG["vector_store"]["index_path"])
+        os.makedirs(vector_store_dir, exist_ok=True)
       
         self.index = faiss.IndexFlatIP(self.dimension)
         self.documents: List[Dict] = []
         self.embeddings = AzureOpenAIEmbeddings(
-            azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
+            azure_deployment=CONFIG["azure"]["embedding_deployment"],
             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15"),
-            chunk_size=1000
+            openai_api_version=CONFIG["embeddings"]["azure"]["api_version"],
+            chunk_size=CONFIG["embeddings"]["azure"]["chunk_size"]
         )   
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:

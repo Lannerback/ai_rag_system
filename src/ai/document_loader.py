@@ -3,13 +3,14 @@ import os
 from typing import List, Dict
 from pathlib import Path
 from langchain_text_splitters import MarkdownTextSplitter
+from src.common.config import CONFIG
 
 class DocumentLoader:
-    def __init__(self, docs_dir: str = "docs"):
-        self.docs_dir = docs_dir
+    def __init__(self, docs_dir: str = None):
+        self.docs_dir = docs_dir or CONFIG["document_loader"]["docs_directory"]
         self.text_splitter = MarkdownTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
+            chunk_size=CONFIG["document_loader"]["chunk_size"],
+            chunk_overlap=CONFIG["document_loader"]["chunk_overlap"]
         )
 
     def load_documents(self) -> List[Dict]:
