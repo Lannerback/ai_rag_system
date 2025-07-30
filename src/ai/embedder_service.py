@@ -10,16 +10,18 @@ import faiss
 
 
 from src.ai.base_embedder import BaseEmbedder
-
-# TODO: Consider using a configuration file for paths
-EMBEDDINGS_INDEX_PATH = "vector_store/faiss.index"
-EMBEDDINGS_METADATA_PATH = "vector_store/metadata.pkl"
+from src.common.config import CONFIG
 
 class EmbedderService():
     def __init__(self,base_embedder: BaseEmbedder):
         self.__base_embedder = base_embedder
+        self._index_path = CONFIG["vector_store"]["index_path"]
+        self._metadata_path = CONFIG["vector_store"]["metadata_path"]
 
-    def load_from_disk(self, index_path=EMBEDDINGS_INDEX_PATH, metadata_path=EMBEDDINGS_METADATA_PATH) -> bool:
+    def load_from_disk(self, index_path=None, metadata_path=None) -> bool:
+        index_path = index_path or self._index_path
+        metadata_path = metadata_path or self._metadata_path
+        
         if os.path.exists(index_path) and os.path.exists(metadata_path):
             self.__base_embedder.index = faiss.read_index(index_path)
             with open(metadata_path, "rb") as f:
@@ -27,7 +29,10 @@ class EmbedderService():
             return True
         return False
 
-    def save_to_disk(self, index_path=EMBEDDINGS_INDEX_PATH, metadata_path=EMBEDDINGS_METADATA_PATH):
+    def save_to_disk(self, index_path=None, metadata_path=None):
+        index_path = index_path or self._index_path
+        metadata_path = metadata_path or self._metadata_path
+        
         faiss.write_index(self.__base_embedder.index, index_path)
         with open(metadata_path, "wb") as f:
             pickle.dump(self.__base_embedder.documents, f)

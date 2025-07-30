@@ -8,16 +8,15 @@ import logging
 from google import generativeai as genai
 
 from src.ai.base_embedder import BaseEmbedder
-
-EMBEDDINGS_INDEX_PATH = "vector_store/faiss.index"
-EMBEDDINGS_METADATA_PATH = "vector_store/metadata.pkl"
+from src.common.config import CONFIG
 
 class GeminiEmbeddingStore(BaseEmbedder):
     def __init__(self):
         super().__init__()
-        self._dimension = 768  # Gemini embedding models usually return 768 dimensions
+        self._dimension = CONFIG["embeddings"]["gemini"]["dimension"]
 
-        os.makedirs("vector_store", exist_ok=True)
+        vector_store_dir = os.path.dirname(CONFIG["vector_store"]["index_path"])
+        os.makedirs(vector_store_dir, exist_ok=True)
 
         self.index = faiss.IndexFlatIP(self.dimension)
         self.documents: List[Dict] = []
@@ -27,7 +26,7 @@ class GeminiEmbeddingStore(BaseEmbedder):
         embeddings = []
         for text in texts:
             response = genai.embed_content(
-                model=os.getenv("GEMINI_EMBEDDING_MODEL"),
+                model=CONFIG["gemini"]["embedding_model"],
                 content=text,
                 task_type="retrieval_document"
             )
@@ -38,7 +37,7 @@ class GeminiEmbeddingStore(BaseEmbedder):
     def embed_query(self, query: str) -> List[float]:
         """Return embedding for a single query string — same interface as Azure."""
         embedding_result = genai.embed_content(
-            model=os.getenv("GEMINI_EMBEDDING_MODEL"),
+            model=CONFIG["gemini"]["embedding_model"],
             content=query
         )["embedding"]
         

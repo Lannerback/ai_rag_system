@@ -1,8 +1,9 @@
 # src/embeddings/base_embedder.py
 from abc import ABC, abstractmethod
+from src.common.config import CONFIG
 
-EMBEDDINGS_INDEX_PATH = "vector_store/faiss.index"
-EMBEDDINGS_METADATA_PATH = "vector_store/metadata.pkl"
+EMBEDDINGS_INDEX_PATH = CONFIG["vector_store"]["index_path"]
+EMBEDDINGS_METADATA_PATH = CONFIG["vector_store"]["metadata_path"]
 
 class BaseEmbedder(ABC):
     def __init__(self):

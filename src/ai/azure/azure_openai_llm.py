@@ -3,6 +3,7 @@ from langchain_openai import AzureChatOpenAI
 import os
 
 from src.ai.base_llm import BaseLLM
+from src.common.config import CONFIG
 
 class AzureLLM(BaseLLM):
     def __init__(self):
@@ -10,9 +11,9 @@ class AzureLLM(BaseLLM):
             azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15"),
-            temperature=0.7,
-            max_tokens=500
+            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", CONFIG["llm"]["azure"]["api_version"]),
+            temperature=CONFIG["llm"]["azure"]["temperature"],
+            max_tokens=CONFIG["llm"]["azure"]["max_tokens"]
         )
 
     def invoke(self, messages: list[dict]):
