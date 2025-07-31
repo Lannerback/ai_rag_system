@@ -1,23 +1,21 @@
 """Facade for AI document loading, embedding, and retrieval logic."""
 from dotenv import load_dotenv
+from langchain_community.document_loaders import DirectoryLoader, UnstructuredFileLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.common.APIException import APIException
 from src.ai.base_llm import BaseLLM
-from src.ai.base_embedder import BaseEmbedder
 
 from src.ai.embedder_service import EmbedderService
 from src.common.config import CONFIG
 
-from .document_loader import DocumentLoader
 
 load_dotenv()
 
 class AiService:    
 
-    def __init__(self,llm: BaseLLM,loader: DocumentLoader,embedder_store: BaseEmbedder):
+    def __init__(self,llm: BaseLLM, embedder_service: EmbedderService):
         self.__llm: BaseLLM = llm
-        self.__loader: DocumentLoader = loader
-        self.embedder_store: BaseEmbedder = embedder_store   
-        self.__embedder_service: EmbedderService = EmbedderService(self.embedder_store)
+        self.__embedder_service: EmbedderService = embedder_service
         
         # Load AI service configuration
         self._system_prompt = CONFIG["ai_service"]["system_prompt"]
@@ -30,11 +28,8 @@ class AiService:
     def _initialize_store(self):
         """Load or build the vector store from documents."""
         if not self.__embedder_service.load_from_disk():
-            documents = self.__loader.load_documents()
-            self.__embedder_service.add_documents(
-                texts=[doc["content"] for doc in documents],
-                metadatas=[doc["metadata"] for doc in documents]
-            )
+            texts, metadatas = self._load_documents()
+            self.__embedder_service.add_documents(texts, metadatas)
             self.__embedder_service.save_to_disk()
 
     def _get_relevant_docs(self, query, k=None):
@@ -67,3 +62,20 @@ class AiService:
             "answer": response,
             "sources": list({frozenset(doc["metadata"].items()): doc["metadata"] for doc in relevant_docs}.values())
         }
+        
+    def _load_documents(self):
+        """Load documents using langchain."""
+        loader = DirectoryLoader(CONFIG["document_loader"]["docs_directory"], glob="**/*", loader_cls=UnstructuredFileLoader)
+        documents = loader.load()
+        chunk_size = CONFIG["document_loader"]["chunk_size"]
+        chunk_overlap = CONFIG["document_loader"]["chunk_overlap"]
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+        split_documents = text_splitter.split_documents(documents)
+
+        texts = [doc.page_content for doc in split_documents]
+        metadatas = [doc.metadata for doc in split_documents]
+        return texts, metadatas

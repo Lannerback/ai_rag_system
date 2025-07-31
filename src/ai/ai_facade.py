@@ -2,16 +2,15 @@
 from dotenv import load_dotenv
 
 from src.ai.ai_service import AiService
-from src.ai.builder_dispatcher import BuilderDsipatcher
+from src.ai.builder_dispatcher import BuilderDispatcher
 load_dotenv()
 
 class AiFacade:    
 
     def __init__(self):
-        self.__builder_dispatcher = BuilderDsipatcher()
+        self.__builder_dispatcher = BuilderDispatcher()
         self.__ai_service = AiService(self.__builder_dispatcher.get_llm(),
-                                      self.__builder_dispatcher.get_loader(),
-                                      self.__builder_dispatcher.get_embedder_store())
+                                      self.__builder_dispatcher.get_embedder_service())
                
   
     def answer_question(self, question: str, k: int = 3) -> dict:           
