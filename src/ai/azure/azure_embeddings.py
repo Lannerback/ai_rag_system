@@ -1,9 +1,7 @@
 """Module for handling document embeddings and vector storage."""
 import os
-import pickle
 from typing import List, Dict
 import numpy as np
-import faiss
 from langchain_openai import AzureOpenAIEmbeddings
 
 from src.ai.base_embedder import BaseEmbedder
@@ -11,14 +9,9 @@ from src.common.config import CONFIG
 
 class AzureEmbeddingStore(BaseEmbedder):
     def __init__(self):
-        super().__init__()
+        super().__init__(CONFIG["embeddings"]["azure"]["dimension"])
         self._dimension = CONFIG["embeddings"]["azure"]["dimension"]
         
-        vector_store_dir = os.path.dirname(CONFIG["vector_store"]["index_path"])
-        os.makedirs(vector_store_dir, exist_ok=True)
-      
-        self.index = faiss.IndexFlatIP(self.dimension)
-        self.documents: List[Dict] = []
         self.embeddings = AzureOpenAIEmbeddings(
             azure_deployment=CONFIG["azure"]["embedding_deployment"],
             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
