@@ -11,11 +11,10 @@ dependencies:
   - faiss-cpu=1.7.4
   - numpy=1.26.2
   - python-multipart=0.0.6
+  - pip
   - pip:
     - langchain==0.3.25
     - langchain-community==0.3.24
     - langchain-text-splitters==0.3.8
     - langchain-openai==0.3.17
-    - google-generativeai>=0.3.2
     - langchain-google-genai==2.1.8
-
