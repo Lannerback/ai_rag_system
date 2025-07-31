@@ -1,8 +1,9 @@
 # AI Assistant - Documentation-Based RAG System
 
 This project is a Retrieval-Augmented Generation (RAG) system that leverages Markdown files as its knowledge base. Simply place your documentation inside the docs/ folder to get started.
+The documentation extensions supported are PDF,MD,DOCX.
 
-The system supports both Gemini and Azure OpenAI models interchangeably, thanks to a clean abstraction layer. This design allows for easy integration of additional models in the fut
+The system supports both Gemini and Azure OpenAI models interchangeably, thanks to a clean abstraction layer. This design allows for easy integration of additional models in the future.
 
 ### Key Features
 
