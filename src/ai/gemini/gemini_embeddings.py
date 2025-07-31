@@ -14,7 +14,7 @@ class GeminiEmbeddingStore(BaseEmbedder):
 
         self.embeddings = GoogleGenerativeAIEmbeddings(
             model=CONFIG["gemini"]["embedding_model"],
-            api_key=os.getenv("GEMINI_API_KEY"),
+            api_key=os.getenv("GOOGLE_API_KEY"),
             chunk_size=CONFIG["embeddings"]["gemini"]["chunk_size"] if "chunk_size" in CONFIG["embeddings"]["gemini"] else None
         )
 

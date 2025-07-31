@@ -105,13 +105,13 @@ Response body:
 
 The system uses environment variables to configure API keys and other sensitive settings. These should be defined in a `.env` file in the root directory of the project. Here are the key variables:
 
--   `GEMINI_API_KEY`: Your API key for Google Gemini. This is required if `providers.llm` or `providers.embeddings` in `config.yaml` is set to `gemini`.
+-   `GOOGLE_API_KEY`: Your API key for Google Gemini. This is required if `providers.llm` or `providers.embeddings` in `config.yaml` is set to `gemini`.
 -   `AZURE_OPENAI_API_KEY`: Your API key for Azure OpenAI. This is required if `providers.llm` or `providers.embeddings` in `config.yaml` is set to `azure`.
 -   `AZURE_OPENAI_ENDPOINT`: The endpoint URL for your Azure OpenAI service. Required if using Azure OpenAI.
 
 Example `.env` file:
 ```
-GEMINI_API_KEY="your_gemini_api_key_here"
+GOOGLE_API_KEY="your_GOOGLE_API_KEY_here"
 AZURE_OPENAI_API_KEY="your_azure_openai_api_key_here"
 AZURE_OPENAI_ENDPOINT="https://your-azure-openai-instance.openai.azure.com/"
 ```
