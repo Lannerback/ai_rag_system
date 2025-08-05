@@ -1,4 +1,4 @@
-"""Facade for AI document loading, embedding, and retrieval logic."""
+"""Facade for AI that exposes the AI service to the API."""
 from dotenv import load_dotenv
 
 from src.ai.ai_service import AiService

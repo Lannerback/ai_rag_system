@@ -1,4 +1,4 @@
-"""Facade for AI document loading, embedding, and retrieval logic."""
+"""Service class that manages the AI document loading, embedding, and retrieval logic."""
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, UnstructuredFileLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter

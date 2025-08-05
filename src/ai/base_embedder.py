@@ -1,4 +1,3 @@
-# src/embeddings/base_embedder.py
 from abc import ABC, abstractmethod
 import os
 import faiss
