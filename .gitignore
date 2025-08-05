@@ -43,7 +43,7 @@ logs/
 tmp/
 temp/
 
-docs/
+docs/**
 
 vector_store/
 vector_store_azure

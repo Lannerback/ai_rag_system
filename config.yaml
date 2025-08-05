@@ -16,8 +16,8 @@ gemini:
 # Provider Configuration
 # Set to 'azure' or 'gemini' to choose the AI provider you previsouly set (above)
 providers:
-  llm: "azure" # or "azure"
-  embeddings: "azure" # or "azure"
+  llm: "gemini" # or "azure"
+  embeddings: "gemini" # or "azure"
 
 ######################### Optional Configuration #########################
 

@@ -30,18 +30,27 @@ The system supports both Gemini and Azure OpenAI models interchangeably, thanks 
    ```bash
    cp .env.example .env
    # Edit .env and insert your API keys
-4. Install dependencies:
+4. Select provider
+   Select the LLM provider you want to use in the **[config.yaml](./config.yaml)** file, in the **providers** section for both llm and embeddings 
+   ```bash
+   # Provider Configuration
+   # Set to 'azure' or 'gemini' to choose the AI provider
+   providers:
+      llm: "gemini" # or "azure"
+      embeddings: "gemini" # or "azure"
+   ```
+5. Install dependencies:
    ```bash
    pip install -r requirements.txt
-5. Fill docs folder
+6. Fill docs folder
    Fill the **docs** folder with documents you need to be used as knowledge for your RAG system 
-6. Run the app:
+7. Run the app:
    ```bash
    python main.py
    
-7. The API will be available at `http://localhost:8000`
+8. The API will be available at `http://localhost:8000`
 
-8. Use the `/ask` endpoint to ask questions:
+9. Use the `/ask` endpoint to ask questions:
    ```bash
    curl -X POST http://localhost:8000/ask \
         -H "Content-Type: application/json" \
