@@ -48,3 +48,6 @@ docs/**
 vector_store/
 vector_store_azure
 vector_store_gemini
+vector_store_gemini_md
+backup_docs
+scanned_docs/*

@@ -7,7 +7,11 @@ from src.ai.base_llm import BaseLLM
 
 from src.ai.embedder_service import EmbedderService
 from src.common.config import CONFIG
-
+import logging
+import os
+import pytesseract
+from pdf2image import convert_from_path
+from typing import Optional
 
 load_dotenv()
 
@@ -28,7 +32,18 @@ class AiService:
     def _initialize_store(self):
         """Load or build the vector store from documents."""
         if not self.__embedder_service.load_from_disk():
-            texts, metadatas = self._load_documents()
+            texts, metadatas = [], []
+
+            # Load "normal" text-based documents
+            docs_texts, docs_metadatas = self._load_documents()
+            texts.extend(docs_texts)
+            metadatas.extend(docs_metadatas)
+
+            # Load OCR-based scanned PDFs
+            ocr_texts, ocr_metadatas = self._load_documents_ocr(CONFIG["document_loader"]["scanned_docs_lang"])
+            texts.extend(ocr_texts)
+            metadatas.extend(ocr_metadatas)
+
             self.__embedder_service.add_documents(texts, metadatas)
             self.__embedder_service.save_to_disk()
 
@@ -79,3 +94,46 @@ class AiService:
         texts = [doc.page_content for doc in split_documents]
         metadatas = [doc.metadata for doc in split_documents]
         return texts, metadatas
+    
+    
+    def _load_documents_ocr(self, lang: str):
+        """
+        Load documents scanned from images to text using OCR
+        """
+        
+        pdf_dir: str = CONFIG["document_loader"]["scanned_docs_dir"]
+        logging.info(f"🔹 Running OCR on {pdf_dir} in lang {lang}")
+
+        ocr_texts = []
+        ocr_metadatas = []
+
+        for file in os.listdir(pdf_dir):
+            if not file.lower().endswith(".pdf"):
+                continue 
+
+            pdf_path = os.path.join(pdf_dir, file)
+            logging.info(f"Processing pdf: {pdf_path}")
+
+            try:
+                images = convert_from_path(pdf_path)
+            except Exception as e:
+                logging.error(f"Failed to read {pdf_path}: {e}")
+                raise APIException(detail = f"PDF file is not valid {pdf_path}", status_code=400, code = "invalid_docs")
+
+            for i, img in enumerate(images):
+                text = pytesseract.image_to_string(img, lang=lang)
+                if text.strip():
+                    ocr_texts.append(text)
+                    ocr_metadatas.append({
+                        "source": pdf_path,
+                        "page": i + 1,
+                        "lang": lang,
+                        "ocr": True
+                    })
+                #logging.debug(f"{pdf_path} page {i+1}: {len(text)} chars extracted")
+
+        if not ocr_texts:
+            logging.warning(f"No text extracted in {pdf_dir} with OCR")
+
+        return ocr_texts, ocr_metadatas
+        

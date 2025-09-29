@@ -7,6 +7,13 @@ from typing import List, Dict
 import pickle
 import numpy as np
 import faiss
+import logging
+
+# Silence pdfminer / unstructured noisy debug logs
+logging.getLogger("pdfminer").setLevel(logging.WARNING)
+logging.getLogger("pdfminer.six").setLevel(logging.WARNING)
+logging.getLogger("unstructured").setLevel(logging.WARNING)
+logging.getLogger("PIL").setLevel(logging.WARNING) 
 
 
 from src.ai.base_embedder import BaseEmbedder
@@ -42,9 +49,9 @@ class EmbedderService():
         if not texts:
             return
         logging.debug(f"🔹 Adding {len(texts)} documents to the vector store...")
-        start_time = time.time()  # ⏱ Start timer
+        start_time = time.time()  # Start timer
         embeddings = self.__base_embedder.embed_documents(texts)
-        duration = time.time() - start_time  # ⏱ End timer
+        duration = time.time() - start_time  # End timer
         logging.debug(f"🔹 embed_documents() took {duration:.2f} seconds for {len(texts)} texts")
 
         embeddings_np = np.array(embeddings).astype('float32')
@@ -58,6 +65,7 @@ class EmbedderService():
                 "metadata": metadata
             })
         self.save_to_disk()
+        
         
     def search(self, query: str, k: int = 3) -> List[Dict]:
         query_embedding = self.__base_embedder.embed_query(query)

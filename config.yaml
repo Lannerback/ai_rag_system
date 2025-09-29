@@ -10,7 +10,7 @@ azure:
 
 # Gemini Configuration in case you want to use Gemini
 gemini:
-  model: gemini-1.5-flash
+  model: gemini-2.5-flash
   embedding_model: models/embedding-001
 
 # Provider Configuration
@@ -24,8 +24,8 @@ providers:
 
 # Vector Store Configuration
 vector_store:
-  index_path: "vector_store_azure/faiss.index"
-  metadata_path: "vector_store_azure/metadata.pkl"
+  index_path: "vector_store/faiss.index"
+  metadata_path: "vector_store/metadata.pkl"
 
 # Embedding Models Configuration
 embeddings:
@@ -56,6 +56,9 @@ document_loader:
   chunk_size: 1000
   chunk_overlap: 200
   docs_directory: "docs"
+  # directory of the pdf files that are scanned (images) and not proper text
+  scanned_docs_dir: "scanned_docs"
+  scanned_docs_lang: "ara" # language of the scanned documents
 
 # AI Service Configuration
 ai_service:
