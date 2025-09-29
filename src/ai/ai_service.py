@@ -80,11 +80,28 @@ class AiService:
         
     def _load_documents(self):
         """Load documents using langchain."""
+        docs_dir: str = CONFIG["document_loader"]["docs_directory"]
+        
+         # Check if directory exists
+        if not os.path.exists(docs_dir) or not os.path.isdir(docs_dir):
+            logging.warning(f"Docs directory for not found: {docs_dir}")
+            return [], []
+        
+        doc_loader_cfg = CONFIG.get("document_loader", {})
+
+        # Validate existence
+        if "chunk_size" not in doc_loader_cfg or doc_loader_cfg["chunk_size"] is None:
+            raise ValueError("Missing required config: document_loader.chunk_size")
+
+        if "chunk_overlap" not in doc_loader_cfg or doc_loader_cfg["chunk_overlap"] is None:
+            raise ValueError("Missing required config: document_loader.chunk_overlap")
+
+
         loader = DirectoryLoader(CONFIG["document_loader"]["docs_directory"], glob="**/*", loader_cls=UnstructuredFileLoader)
         documents = loader.load()
         chunk_size = CONFIG["document_loader"]["chunk_size"]
         chunk_overlap = CONFIG["document_loader"]["chunk_overlap"]
-
+        
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap
@@ -102,6 +119,12 @@ class AiService:
         """
         
         pdf_dir: str = CONFIG["document_loader"]["scanned_docs_dir"]
+        
+        # Check if directory exists
+        if not os.path.exists(pdf_dir) or not os.path.isdir(pdf_dir):
+            logging.warning(f"OCR directory for scanned_docs not found: {pdf_dir}")
+            return [], []
+        
         logging.info(f"🔹 Running OCR on {pdf_dir} in lang {lang}")
 
         ocr_texts = []
