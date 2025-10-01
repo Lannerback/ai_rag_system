@@ -53,8 +53,8 @@ llm:
 
 # Document Processing Configuration
 document_loader:
-  chunk_size: 1000
-  chunk_overlap: 200
+  chunk_size: 300
+  chunk_overlap: 15
   docs_directory: "docs"
   # directory of the pdf files that are scanned (images) and not proper text
   scanned_docs_dir: "scanned_docs"

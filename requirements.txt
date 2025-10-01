@@ -7,6 +7,7 @@ faiss-cpu==1.9
 pytesseract
 pdf2image
 pillow
+charset-normalizer==3.4.3
 langchain==0.3.27
 langchain-community==0.3.30
 langchain-text-splitters==0.3.11

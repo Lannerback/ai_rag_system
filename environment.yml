@@ -14,6 +14,7 @@ dependencies:
   - pdf2image
   - poppler
   - pillow
+  - charset-normalizer=3.4.3
   - pip
   - pip:
       - numpy<2

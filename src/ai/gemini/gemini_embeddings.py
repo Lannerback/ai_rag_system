@@ -4,7 +4,7 @@ from typing import List, Dict
 import numpy as np
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from src.ai.base_embedder import BaseEmbedder
+from src.ai.vector_store.base_embedder import BaseEmbedder
 from src.common.config import CONFIG
 
 class GeminiEmbeddingStore(BaseEmbedder):
@@ -12,7 +12,7 @@ class GeminiEmbeddingStore(BaseEmbedder):
         super().__init__(CONFIG["embeddings"]["gemini"]["dimension"])
         self._dimension = CONFIG["embeddings"]["gemini"]["dimension"]
 
-        self.embeddings = GoogleGenerativeAIEmbeddings(
+        self.embeddings: GoogleGenerativeAIEmbeddings = GoogleGenerativeAIEmbeddings(
             model=CONFIG["gemini"]["embedding_model"],
             api_key=os.getenv("GOOGLE_API_KEY"),
             chunk_size=CONFIG["embeddings"]["gemini"]["chunk_size"] if "chunk_size" in CONFIG["embeddings"]["gemini"] else None

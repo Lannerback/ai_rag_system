@@ -3,11 +3,11 @@ from dotenv import load_dotenv
 from src.common.config import CONFIG
 
 from src.ai.base_llm import BaseLLM
-from src.ai.base_embedder import BaseEmbedder
+from src.ai.vector_store.base_embedder import BaseEmbedder
 
 from .azure.azure_openai_llm import AzureLLM
 from .azure.azure_embeddings import AzureEmbeddingStore
-from src.ai.embedder_service import EmbedderService
+from src.ai.vector_store.faiss_vector_store import FaissVectorStore
 from src.ai.gemini.gemini_embeddings import GeminiEmbeddingStore
 from src.ai.gemini.gemini_llm import GeminiLLM
 
@@ -28,7 +28,7 @@ class BuilderDispatcher:
     def __init__(self):
         self.__llm: BaseLLM = self._build_llm()
         self.__embedder_store: BaseEmbedder = self._build_store()
-        self.__embedder_service: EmbedderService = self._build_embedder_service(self.__embedder_store)
+        self.__embedder_service: FaissVectorStore = self._build_embedder_service(self.__embedder_store)
                         
 
     def _build_llm(self) -> BaseLLM:
@@ -48,14 +48,14 @@ class BuilderDispatcher:
         else:
             raise ValueError(f"Unsupported embeddings provider: {embeddings_provider_name}")
     
-    def _build_embedder_service(self,store) -> EmbedderService:
-        return EmbedderService(store)
+    def _build_embedder_service(self,store) -> FaissVectorStore:
+        return FaissVectorStore(store)
     
     def get_llm(self) -> BaseLLM:
         """Get the LLM instance."""
         return self.__llm
     
     
-    def get_embedder_service(self) -> EmbedderService:
-        """Get the EmbedderService instance."""
+    def get_embedder_service(self) -> FaissVectorStore:
+        """Get the FaissVectorStore instance."""
         return self.__embedder_service  
