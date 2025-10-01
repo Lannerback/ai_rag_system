@@ -40,6 +40,8 @@ embeddings:
 
 # Language Models Configuration
 llm:
+  system_prompt: "You are a helpful assistant that answers questions based on the provided documentation."
+  default_k: 3
   # Azure OpenAI LLM
   azure:
     temperature: 0.7
@@ -59,9 +61,3 @@ document_loader:
   # directory of the pdf files that are scanned (images) and not proper text
   scanned_docs_dir: "scanned_docs"
   scanned_docs_lang: "ara" # language of the scanned documents
-
-# AI Service Configuration
-ai_service:
-  system_prompt: "You are a helpful assistant that answers questions based on the provided documentation."
-  default_k: 3
-
