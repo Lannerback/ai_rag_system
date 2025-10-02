@@ -1,5 +1,4 @@
 """ class that builds the needed embedder and llm based on the chosen envrionment (Gemini, Azure, etc.) """
-from dotenv import load_dotenv
 from src.common.config import CONFIG
 
 from src.ai.base_llm import BaseLLM
@@ -10,8 +9,6 @@ from .azure.azure_embeddings import AzureEmbeddingStore
 from src.ai.vector_store.faiss_vector_store import FaissVectorStore
 from src.ai.gemini.gemini_embeddings import GeminiEmbeddingStore
 from src.ai.gemini.gemini_llm import GeminiLLM
-
-load_dotenv()
 
 class BuilderDispatcher:    
     # Map provider names to their respective LLM and EmbeddingStore classes
