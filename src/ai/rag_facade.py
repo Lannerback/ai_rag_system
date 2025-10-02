@@ -9,7 +9,7 @@ class RagFacade:
     def __init__(self):
         self.__builder_dispatcher = BuilderDispatcher()
         self.__rag_service = RagService(self.__builder_dispatcher.get_llm(),
-                                        self.__builder_dispatcher.get_embedder_service(),
+                                        self.__builder_dispatcher.get_vector_store(),
                                         CONFIG["llm"]["system_prompt"],
                                         CONFIG["llm"]["default_k"])
         self.__document_loader_facade = DocumentLoaderFacade()

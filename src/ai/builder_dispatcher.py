@@ -27,12 +27,12 @@ class BuilderDispatcher:
 
     def __init__(self):
         self.__llm: BaseLLM = self._build_llm()
-        self.__embedder_store: BaseEmbedder = self._build_store()
-        self.__embedder_service: FaissVectorStore = self._build_embedder_service(self.__embedder_store)
+        self.__embedder_store: BaseEmbedder = self._build_embedder_store()
+        self.__vectore_store: FaissVectorStore = self._build_vectore_store(self.__embedder_store)
                         
 
     def _build_llm(self) -> BaseLLM:
-        llm_provider_name = CONFIG["providers"]["llm"]
+        llm_provider_name = CONFIG["llm"]["provider"]
         llm_class = self.LLM_PROVIDERS.get(llm_provider_name)
         if llm_class:
             return llm_class()
@@ -40,15 +40,15 @@ class BuilderDispatcher:
             raise ValueError(f"Unsupported LLM provider: {llm_provider_name}")
 
 
-    def _build_store(self) -> BaseEmbedder:
-        embeddings_provider_name = CONFIG["providers"]["embeddings"]
+    def _build_embedder_store(self) -> BaseEmbedder:
+        embeddings_provider_name = CONFIG["llm"]["provider"]
         embedding_class = self.EMBEDDING_PROVIDERS.get(embeddings_provider_name)
         if embedding_class:
             return embedding_class()
         else:
             raise ValueError(f"Unsupported embeddings provider: {embeddings_provider_name}")
     
-    def _build_embedder_service(self,store) -> FaissVectorStore:
+    def _build_vectore_store(self,store) -> FaissVectorStore:
         return FaissVectorStore(store)
     
     def get_llm(self) -> BaseLLM:
@@ -56,6 +56,6 @@ class BuilderDispatcher:
         return self.__llm
     
     
-    def get_embedder_service(self) -> FaissVectorStore:
+    def get_vector_store(self) -> FaissVectorStore:
         """Get the FaissVectorStore instance."""
-        return self.__embedder_service  
+        return self.__vectore_store  

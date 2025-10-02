@@ -9,13 +9,12 @@ from src.common.config import CONFIG
 
 class GeminiEmbeddingStore(BaseEmbedder):
     def __init__(self):
-        super().__init__(CONFIG["embeddings"]["gemini"]["dimension"])
-        self._dimension = CONFIG["embeddings"]["gemini"]["dimension"]
+        super().__init__(CONFIG["llm"]["gemini"]["embeddings_dimension"])
+        self._dimension = CONFIG["llm"]["gemini"]["embeddings_dimension"]
 
         self.embeddings: GoogleGenerativeAIEmbeddings = GoogleGenerativeAIEmbeddings(
             model=CONFIG["gemini"]["embedding_model"],
-            api_key=os.getenv("GOOGLE_API_KEY"),
-            chunk_size=CONFIG["embeddings"]["gemini"]["chunk_size"] if "chunk_size" in CONFIG["embeddings"]["gemini"] else None
+            api_key=os.getenv("GOOGLE_API_KEY")
         )
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
