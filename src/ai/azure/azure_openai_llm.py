@@ -1,5 +1,6 @@
 # src/llm/azure_openai_llm.py
 from langchain_openai import AzureChatOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
 import os
 
 from src.ai.base_llm import BaseLLM
@@ -16,6 +17,6 @@ class AzureLLM(BaseLLM):
             max_tokens=CONFIG["llm"]["azure"]["max_tokens"]
         )
 
-    def invoke(self, messages: list[dict]):
+    def invoke(self, messages: list[dict]) -> str:
         response = self.__llm.invoke(messages)
         return response.content

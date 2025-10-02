@@ -47,5 +47,6 @@ document_loader:
   chunk_overlap: 15
   docs_directory: "docs"
   # directory of the pdf files that are scanned (images) and not proper text
-  scanned_docs_dir: "scanned_docs"
+  ocr_docs_dir: "ocr_docs"
+  llm_extractor_docs_dir: "llm_extractor_docs"
   scanned_docs_lang: "ara" # language of the scanned documents

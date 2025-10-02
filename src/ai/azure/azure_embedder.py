@@ -1,17 +1,15 @@
 """Module for handling document embeddings and vector storage."""
 import os
-from typing import List, Dict
 import numpy as np
 from langchain_openai import AzureOpenAIEmbeddings
 
-from src.ai.vector_store.base_embedder import BaseEmbedder
+from src.ai.vector_store_service.base_embedder import BaseEmbedder
 from src.common.config import CONFIG
 
-class AzureEmbeddingStore(BaseEmbedder):
+class AzureEmbedder(BaseEmbedder):
     def __init__(self):
-        super().__init__(CONFIG["llm"]["azure"]["embeddings_dimension"])
         self._dimension = CONFIG["llm"]["azure"]["embeddings_dimension"]
-        
+    
         self.embeddings: AzureOpenAIEmbeddings = AzureOpenAIEmbeddings(
             azure_deployment=CONFIG["azure"]["embedding_deployment"],
             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),

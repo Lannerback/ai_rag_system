@@ -2,12 +2,11 @@
 from src.common.config import CONFIG
 
 from src.ai.base_llm import BaseLLM
-from src.ai.vector_store.base_embedder import BaseEmbedder
+from src.ai.vector_store_service.base_embedder import BaseEmbedder
 
 from .azure.azure_openai_llm import AzureLLM
-from .azure.azure_embeddings import AzureEmbeddingStore
-from src.ai.vector_store.faiss_vector_store import FaissVectorStore
-from src.ai.gemini.gemini_embeddings import GeminiEmbeddingStore
+from .azure.azure_embedder import AzureEmbedder
+from src.ai.gemini.gemini_embedder import GeminiEmbedder
 from src.ai.gemini.gemini_llm import GeminiLLM
 
 class BuilderDispatcher:    
@@ -18,41 +17,32 @@ class BuilderDispatcher:
     }
 
     EMBEDDING_PROVIDERS = {
-        'azure': AzureEmbeddingStore,
-        'gemini': GeminiEmbeddingStore
+        'azure': AzureEmbedder,
+        'gemini': GeminiEmbedder
     }
 
     def __init__(self):
         self.__llm: BaseLLM = self._build_llm()
         self.__embedder_store: BaseEmbedder = self._build_embedder_store()
-        self.__vectore_store: FaissVectorStore = self._build_vectore_store(self.__embedder_store)
                         
 
     def _build_llm(self) -> BaseLLM:
         llm_provider_name = CONFIG["llm"]["provider"]
-        llm_class = self.LLM_PROVIDERS.get(llm_provider_name)
-        if llm_class:
-            return llm_class()
-        else:
-            raise ValueError(f"Unsupported LLM provider: {llm_provider_name}")
+        llm_class: BaseLLM = self.LLM_PROVIDERS.get(llm_provider_name)
+        return llm_class()
 
 
     def _build_embedder_store(self) -> BaseEmbedder:
         embeddings_provider_name = CONFIG["llm"]["provider"]
-        embedding_class = self.EMBEDDING_PROVIDERS.get(embeddings_provider_name)
-        if embedding_class:
-            return embedding_class()
-        else:
-            raise ValueError(f"Unsupported embeddings provider: {embeddings_provider_name}")
+        embedding_class: BaseEmbedder = self.EMBEDDING_PROVIDERS.get(embeddings_provider_name)
+        return embedding_class()
     
-    def _build_vectore_store(self,store) -> FaissVectorStore:
-        return FaissVectorStore(store)
     
     def get_llm(self) -> BaseLLM:
         """Get the LLM instance."""
         return self.__llm
     
+    def get_embedder_store(self) -> BaseEmbedder:
+        """Get the EmbedderStore instance."""
+        return self.__embedder_store
     
-    def get_vector_store(self) -> FaissVectorStore:
-        """Get the FaissVectorStore instance."""
-        return self.__vectore_store  

@@ -14,7 +14,6 @@ class GeminiLLM(BaseLLM):
             api_key=os.getenv("GOOGLE_API_KEY")
         )
 
-    def invoke(self, messages: list[dict]):
+    def invoke(self, messages: list[dict]) -> str:
         response = self.__llm.invoke(messages)
-
         return response.content

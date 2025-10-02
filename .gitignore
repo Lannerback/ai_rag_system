@@ -52,3 +52,4 @@ vector_store_gemini_md
 backup_docs
 scanned_docs/**
 scripts
+llm_extractor_docs
