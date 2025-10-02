@@ -12,9 +12,6 @@ class DocumentLoaderFacade:
     def __init__(self, base_llm: BaseLLM):
         """
         Initialize document loaders.
-        
-        Args:
-            langchain_llm: Optional LangChain LLM instance for LLM-based extraction (e.g., ChatGoogleGenerativeAI)
         """
         self.text_document_loader: TextDocumentLoader = TextDocumentLoader(
             CONFIG["document_loader"]["docs_directory"], 
@@ -39,7 +36,7 @@ class DocumentLoaderFacade:
                 CONFIG["document_loader"]["scanned_docs_lang"],
                 base_llm
             )
-            logging.info("✅ LLM extractor document loader initialized")
+            logging.info("LLM extractor document loader initialized")
         except Exception as e:
             logging.warning(f"Failed to initialize LLM extractor: {e}")
     

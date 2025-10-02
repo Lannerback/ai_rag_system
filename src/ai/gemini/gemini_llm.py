@@ -11,7 +11,6 @@ class GeminiLLM(BaseLLM):
             model=CONFIG["gemini"]["model"],
             temperature=CONFIG["llm"]["gemini"]["temperature"],
             top_p=CONFIG["llm"]["gemini"]["top_p"],
-            max_output_tokens=CONFIG["llm"]["gemini"]["max_output_tokens"],
             api_key=os.getenv("GOOGLE_API_KEY")
         )
 

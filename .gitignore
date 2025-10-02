@@ -42,6 +42,7 @@ logs/
 # Temporary files
 tmp/
 temp/
+llm_extracted_text_temp/
 
 docs/**
 
