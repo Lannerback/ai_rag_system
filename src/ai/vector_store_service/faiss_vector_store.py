@@ -26,6 +26,7 @@ class FaissVectorStore:
         return False
 
     def save_to_disk(self):
+        os.makedirs(os.path.dirname(self._index_path), exist_ok=True)
         faiss.write_index(self.index, self._index_path)
         with open(self._metadata_path, "wb") as f:
             pickle.dump(self.documents, f)
@@ -54,5 +55,5 @@ class FaissVectorStore:
         query_embedding = self.embedder.embed_query(query)
         query_np = np.array([query_embedding]).astype("float32")
         faiss.normalize_L2(query_np)
-        D, I = self.index.search(query_np, k)
+        _, I = self.index.search(query_np, k)
         return [self.documents[idx] for idx in I[0] if idx < len(self.documents)]

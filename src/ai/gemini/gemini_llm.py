@@ -1,6 +1,7 @@
 # src/llm/gemini_llm.py
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import BaseMessage
 from src.ai.base_llm import BaseLLM
 from src.common.config import CONFIG
 
@@ -14,6 +15,6 @@ class GeminiLLM(BaseLLM):
             api_key=os.getenv("GOOGLE_API_KEY")
         )
 
-    def invoke(self, messages: list[dict]) -> str:
+    def invoke(self, messages: list[dict]) -> BaseMessage:
         response = self.__llm.invoke(messages)
-        return response.content
+        return response

@@ -38,7 +38,7 @@ class RagService:
             {"role": "user", "content": prompt}
         ])
         return {
-            "answer": response,
+            "answer": response.content,
             "sources": list({frozenset(doc["metadata"].items()): doc["metadata"] for doc in relevant_docs}.values())
         }
         

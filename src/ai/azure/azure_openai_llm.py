@@ -17,6 +17,6 @@ class AzureLLM(BaseLLM):
             max_tokens=CONFIG["llm"]["azure"]["max_tokens"]
         )
 
-    def invoke(self, messages: list[dict]) -> str:
+    def invoke(self, messages: list[dict]):
         response = self.__llm.invoke(messages)
-        return response.content
+        return response
