@@ -6,13 +6,13 @@ from typing import List, Dict
 import numpy as np
 import faiss
 
-from src.ai.vector_store_service.base_embedder import BaseEmbedder
+from src.ai.embedders.base_embedder import BaseEmbedder
 from src.common.config import CONFIG
-from src.common.app_context import get_app_context
+from src.ai.vector_store_service.base_vector_store import BaseVectorStore
 
-class FaissVectorStore:
-    def __init__(self):
-        self.embedder: BaseEmbedder = get_app_context().state.embedder
+class FaissVectorStore(BaseVectorStore):
+    def __init__(self, embedder: BaseEmbedder):
+        self.embedder: BaseEmbedder = embedder
         self.index = faiss.IndexFlatIP(self.embedder.dimension)
         self.documents: List[Dict] = []
         self._index_path = CONFIG["vector_store"]["index_path"]

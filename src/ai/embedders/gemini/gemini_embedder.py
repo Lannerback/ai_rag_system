@@ -1,7 +1,7 @@
 import os
 from typing import List
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from src.ai.vector_store_service.base_embedder import BaseEmbedder
+from src.ai.embedders.base_embedder import BaseEmbedder
 from src.common.config import CONFIG
 
 class GeminiEmbedder(BaseEmbedder):

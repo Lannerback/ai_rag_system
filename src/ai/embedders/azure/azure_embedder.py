@@ -3,7 +3,7 @@ import os
 import numpy as np
 from langchain_openai import AzureOpenAIEmbeddings
 
-from src.ai.vector_store_service.base_embedder import BaseEmbedder
+from src.ai.embedders.base_embedder import BaseEmbedder
 from src.common.config import CONFIG
 
 class AzureEmbedder(BaseEmbedder):

@@ -1,7 +1,7 @@
 """Service class that manages the AI document loading, embedding, and retrieval logic."""
 from src.common.APIException import APIException
 from src.ai.base_llm import BaseLLM
-from src.ai.vector_store_service.vestor_store_facade import VectorStoreFacade
+from src.ai.vector_store_service.vector_store_facade import VectorStoreFacade
 from src.common.config import CONFIG
 import logging
 from src.common.app_context import get_app_context

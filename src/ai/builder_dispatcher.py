@@ -2,12 +2,11 @@
 from src.common.config import CONFIG
 
 from src.ai.base_llm import BaseLLM
-from src.ai.vector_store_service.base_embedder import BaseEmbedder
-
-from .azure.azure_openai_llm import AzureLLM
-from .azure.azure_embedder import AzureEmbedder
-from src.ai.gemini.gemini_embedder import GeminiEmbedder
-from src.ai.gemini.gemini_llm import GeminiLLM
+from src.ai.embedders.base_embedder import BaseEmbedder
+from src.ai.embedders.azure.azure_openai_llm import AzureLLM
+from src.ai.embedders.azure.azure_embedder import AzureEmbedder
+from src.ai.embedders.gemini.gemini_embedder import GeminiEmbedder
+from src.ai.embedders.gemini.gemini_llm import GeminiLLM
 
 class BuilderDispatcher:    
     # Map provider names to their respective LLM and EmbeddingStore classes

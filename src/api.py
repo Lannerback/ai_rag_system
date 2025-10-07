@@ -21,6 +21,8 @@ logging.basicConfig(
 from contextlib import asynccontextmanager
 from src.ai.builder_dispatcher import BuilderDispatcher
 from src.common.app_context import set_app_context
+from src.ai.vector_store_service.faiss.faiss_vector_store_initializer import VectorStoreInitializer
+from src.ai.vector_store_service.vector_store_facade import VectorStoreFacade
 
 rag_facade = None
 
@@ -29,7 +31,8 @@ def startup_event():
     start_time = time.perf_counter()
 
     logging.info("Initializing vector store...")
-    rag_facade.initialize_vector_store()
+    vector_store_initializer = VectorStoreInitializer()
+    vector_store_initializer.initialize_vector_store()
 
     duration_sec = time.perf_counter() - start_time
     duration_min = duration_sec / 60
@@ -66,7 +69,7 @@ async def api_exception_handler(request: Request, exc: APIException):
         status_code=exc.status_code,
         content={
             "detail": exc.detail,
-            "code": exc.code  # custom code you added
+            "code": exc.code 
         }
     )
     
