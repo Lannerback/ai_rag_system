@@ -18,8 +18,46 @@ logging.basicConfig(
     level=logging.DEBUG,  # or INFO
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+from contextlib import asynccontextmanager
+from src.ai.builder_dispatcher import BuilderDispatcher
+from src.common.app_context import set_app_context
 
-app = FastAPI(title="AI Assistant",)
+rag_facade = None
+
+def startup_event():
+    """Initialize the vector store when the application starts."""
+    start_time = time.perf_counter()
+
+    logging.info("Initializing vector store...")
+    rag_facade.initialize_vector_store()
+
+    duration_sec = time.perf_counter() - start_time
+    duration_min = duration_sec / 60
+
+    logging.info(f"Vector store initialized in {duration_min:.2f} minutes "
+                 f"({duration_sec:.2f} seconds).")
+    logging.info("Application startup complete")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.info("Setting up application...")
+    # Set the environment and vector store
+    # Make app globally accessible
+    set_app_context(app)
+
+    builder = BuilderDispatcher()
+    app.state.llm = builder.get_llm()
+    app.state.embedder = builder.get_embedder_store()
+    global rag_facade
+    rag_facade = RagFacade()
+    
+    startup_event()
+
+    yield
+
+
+app = FastAPI(title="AI Assistant", lifespan=lifespan)
 
 @app.exception_handler(APIException)
 async def api_exception_handler(request: Request, exc: APIException):
@@ -32,24 +70,7 @@ async def api_exception_handler(request: Request, exc: APIException):
         }
     )
     
-rag_facade = RagFacade()
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the vector store when the application starts."""
-    logging.info("Starting application...")
-
-    start_time = time.perf_counter()
-
-    logging.info("Initializing vector store...")
-    rag_facade.initialize_vector_store()
-
-    duration_sec = time.perf_counter() - start_time
-    duration_min = duration_sec / 60
-
-    logging.info(f"Vector store initialized in {duration_min:.2f} minutes "
-                 f"({duration_sec:.2f} seconds).")
-    logging.info("Application startup complete")
 
 class Question(BaseModel):
     text: str

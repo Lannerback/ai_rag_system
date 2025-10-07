@@ -1,5 +1,6 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.common.APIException import APIException
+from src.ai.document_loaders.base_document_loader import BaseDocumentLoader
 
 import logging
 import os
@@ -8,7 +9,8 @@ from pdf2image import convert_from_path
 from typing import List, Tuple
 
 
-class OcrDocumentLoader:
+class OcrDocumentLoader(BaseDocumentLoader):
+    """Document loader for scanned PDFs using OCR (Tesseract)."""
     
     def __init__(self, directory: str, chunk_size: int, chunk_overlap: int, lang: str):
         self.directory: str = directory
@@ -17,7 +19,6 @@ class OcrDocumentLoader:
             chunk_overlap=chunk_overlap,
         )
         self.lang: str = lang
-
     
     def load_documents(self) -> Tuple[List[str], List[dict]]:
         """

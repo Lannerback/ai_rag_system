@@ -2,17 +2,26 @@ from langchain_community.document_loaders import DirectoryLoader, UnstructuredFi
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.common.config import CONFIG
+from src.ai.document_loaders.base_document_loader import BaseDocumentLoader
 import logging
 import os
 from typing import List, Tuple
 
-class TextDocumentLoader:
+
+class TextDocumentLoader(BaseDocumentLoader):
+    """Document loader for text-based files (Markdown, PDF, DOCX)."""
+    
     def __init__(self, directory: str, chunk_size: int, chunk_overlap: int):
         self.directory = directory
-        self.loader: DirectoryLoader = DirectoryLoader(directory, glob="**/*", loader_cls=UnstructuredFileLoader)
+        self.loader: DirectoryLoader = DirectoryLoader(
+            directory, 
+            glob="**/*", 
+            loader_cls=UnstructuredFileLoader
+        )
         self.text_splitter: RecursiveCharacterTextSplitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap)      
+            chunk_overlap=chunk_overlap
+        )
     
     def load_documents(self) -> Tuple[List[str], List[dict]]:
         """Load documents from the directory, split into chunks, and return texts + metadata."""

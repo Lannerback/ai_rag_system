@@ -8,11 +8,12 @@ import faiss
 
 from src.ai.vector_store_service.base_embedder import BaseEmbedder
 from src.common.config import CONFIG
+from src.common.app_context import get_app_context
 
 class FaissVectorStore:
-    def __init__(self, embedder: BaseEmbedder):
-        self.embedder = embedder
-        self.index = faiss.IndexFlatIP(embedder.dimension)
+    def __init__(self):
+        self.embedder: BaseEmbedder = get_app_context().state.embedder
+        self.index = faiss.IndexFlatIP(self.embedder.dimension)
         self.documents: List[Dict] = []
         self._index_path = CONFIG["vector_store"]["index_path"]
         self._metadata_path = CONFIG["vector_store"]["metadata_path"]

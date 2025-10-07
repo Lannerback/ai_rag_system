@@ -1,6 +1,7 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.schema import HumanMessage
 from src.common.APIException import APIException
+from src.ai.document_loaders.base_document_loader import BaseDocumentLoader
 
 import logging
 import os
@@ -9,11 +10,13 @@ import io
 from pdf2image import convert_from_path
 from typing import List, Tuple
 from src.ai.base_llm import BaseLLM
+from src.common.app_context import get_app_context
 
 
-class LlmExtractorDocumentLoader:
+class LlmExtractorDocumentLoader(BaseDocumentLoader):
+    """Document loader for scanned PDFs using LLM-based extraction (vision models)."""
     
-    def __init__(self, directory: str, chunk_size: int, chunk_overlap: int, lang: str, base_llm: BaseLLM):
+    def __init__(self, directory: str, chunk_size: int, chunk_overlap: int, lang: str):
         """
         Initialize LLM-based document extractor for scanned PDFs.
         
@@ -30,7 +33,9 @@ class LlmExtractorDocumentLoader:
             chunk_overlap=chunk_overlap,
         )
         self.__lang: str = lang
-        self.__llm = base_llm
+        self.__llm: BaseLLM = get_app_context().state.llm
+        self.__temp_output_dir = "llm_extracted_text_temp"
+        os.makedirs(self.__temp_output_dir, exist_ok=True)
 
     
     def load_documents(self) -> Tuple[List[str], List[dict]]:
@@ -64,7 +69,6 @@ class LlmExtractorDocumentLoader:
         logging.info(f"Processing PDF: {pdf_path}")
         
         try:
-            # convert the pdf to images
             images = convert_from_path(pdf_path)
         except Exception as e:
             logging.error(f"Failed to read {pdf_path}: {e}")
@@ -74,19 +78,25 @@ class LlmExtractorDocumentLoader:
                 code="invalid_docs",
             )
         
+        raw_extracted_text = []
+        
         for i, img in enumerate(images, start=1):
-            # extract the text from the image
-            self._extract_text_from_page(img, pdf_path, filename, i, texts, metadatas)
+            extracted_page_text = self._extract_text_from_page(img, pdf_path, filename, i, texts, metadatas)
+            if extracted_page_text:
+                raw_extracted_text.append(f"--- Page {i} ---\n{extracted_page_text}\n")
+        
+        if raw_extracted_text:
+            self._save_temp_output(filename, raw_extracted_text)
     
     
     def _extract_text_from_page(self, img, pdf_path: str, filename: str, page_num: int, 
-                                  texts: List[str], metadatas: List[dict]) -> None:
-        """Extract text from a single page using LLM."""
+                                  texts: List[str], metadatas: List[dict]) -> str:
+        """Extract text from a single page using LLM. Returns the raw extracted text."""
         img_b64 = self._pil_to_base64(img)
         task = (
-            f"Extract all the text from this scanned PDF page in the iso3 code language: {self.__lang}. "
-            "Remove headers/footers, keep paragraph structure."
-        )  
+            "Extract all Arabic text from this scanned PDF page. "
+            "Remove headers/footers, keep paragraph structure. "
+        )
         
         try:
             response = self.__llm.invoke([
@@ -109,9 +119,24 @@ class LlmExtractorDocumentLoader:
                         "lang": self.__lang,
                         "llm_extracted": True,
                     })
+                return text
         except Exception as e:
             logging.error(f"Failed to extract text from page {page_num} of {pdf_path}: {e}")
+        
+        return ""
     
+    
+    def _save_temp_output(self, filename: str, extracted_pages: List[str]) -> None:
+        """Save the extracted text to a temporary file for review."""
+        base_name = os.path.splitext(filename)[0]
+        output_path = os.path.join(self.__temp_output_dir, f"{base_name}_extracted.txt")
+        
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(extracted_pages))
+            logging.info(f"💾 Extracted text saved to: {output_path}")
+        except Exception as e:
+            logging.warning(f"Failed to save temp output for {filename}: {e}")
     
     def _pil_to_base64(self, img, format: str = "PNG") -> str:
         """Convert a PIL Image to base64 string with proper header."""
