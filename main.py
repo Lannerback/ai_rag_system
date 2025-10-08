@@ -1,4 +1,8 @@
 """Main application entry point."""
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import uvicorn
 from src.api import app
 

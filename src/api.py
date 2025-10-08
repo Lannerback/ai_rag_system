@@ -3,25 +3,43 @@ API file that create the FastAPI application and defines the endpoints.
 """
 from typing import Dict
 import logging
+import time
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
 from src.common.APIException import APIException 
-from src.ai.ai_facade import AiFacade
+from src.ai.rag_facade import RagFacade
 logger = logging.getLogger(__name__)
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.DEBUG,  # or INFO
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+from contextlib import asynccontextmanager
+from src.startup import initialize_vector_store, initialize_rag_facade
 
-app = FastAPI(title="AI Assistant",)
+rag_facade: RagFacade = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.info("Setting up application...")
+    try:
+        initialize_vector_store()
+    except Exception as e:
+        logging.error(f"Error initializing vector store: {e}")
+        logging.shutdown()
+        exit(1) 
+        
+    logging.info("Vector store initialized successfully")
+    global rag_facade
+    rag_facade = initialize_rag_facade()
+    yield
+
+
+app = FastAPI(title="AI Assistant", lifespan=lifespan)
 
 @app.exception_handler(APIException)
 async def api_exception_handler(request: Request, exc: APIException):
@@ -30,11 +48,11 @@ async def api_exception_handler(request: Request, exc: APIException):
         status_code=exc.status_code,
         content={
             "detail": exc.detail,
-            "code": exc.code  # custom code you added
+            "code": exc.code 
         }
     )
     
-ai_facade = AiFacade()
+
 
 class Question(BaseModel):
     text: str
@@ -51,7 +69,7 @@ async def ask_question(question: Question):
     logging.info(f"Received question: {question.text}")
     
     try:
-        response = ai_facade.answer_question(question.text)                                    
+        response = rag_facade.answer_question(question.text)                                    
         return response
             
     except Exception as e:

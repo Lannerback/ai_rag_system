@@ -1,5 +1,6 @@
 # src/llm/azure_openai_llm.py
 from langchain_openai import AzureChatOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
 import os
 
 from src.ai.base_llm import BaseLLM
@@ -18,4 +19,4 @@ class AzureLLM(BaseLLM):
 
     def invoke(self, messages: list[dict]):
         response = self.__llm.invoke(messages)
-        return response.content
+        return response

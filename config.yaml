@@ -10,16 +10,9 @@ azure:
 
 # Gemini Configuration in case you want to use Gemini
 gemini:
-  model: gemini-2.5-flash
+  model: gemini-2.5-pro
   embedding_model: models/embedding-001
 
-# Provider Configuration
-# Set to 'azure' or 'gemini' to choose the AI provider you previsouly set (above)
-providers:
-  llm: "gemini" # or "azure"
-  embeddings: "gemini" # or "azure"
-
-######################### Optional Configuration #########################
 
 
 # Vector Store Configuration
@@ -27,41 +20,33 @@ vector_store:
   index_path: "vector_store/faiss.index"
   metadata_path: "vector_store/metadata.pkl"
 
-# Embedding Models Configuration
-embeddings:
-  # Azure OpenAI Embeddings
-  azure:
-    dimension: 1536
-    chunk_size: 1000
-  
-  # Gemini Embeddings
-  gemini:
-    dimension: 768
 
 # Language Models Configuration
 llm:
+  # Provider Configuration
+  # Set to 'azure' or 'gemini' to choose the AI provider you previsouly set (above)
+  provider: "gemini"
+  system_prompt: "You are a helpful assistant that answers questions based on the provided documentation. Reply in the same language as the question, unless otherwise specified."
+  default_k: 10
   # Azure OpenAI LLM
   azure:
-    temperature: 0.7
+    temperature: 0.1
     max_tokens: 500
+    embeddings_dimension: 1536
   
   # Gemini LLM
   gemini:
-    temperature: 0.7
+    temperature: 0.1
     top_p: 0.95
     max_output_tokens: 500
+    embeddings_dimension: 768
 
 # Document Processing Configuration
 document_loader:
-  chunk_size: 1000
-  chunk_overlap: 200
+  chunk_size: 300
+  chunk_overlap: 30
   docs_directory: "docs"
   # directory of the pdf files that are scanned (images) and not proper text
-  scanned_docs_dir: "scanned_docs"
+  ocr_docs_dir: "ocr_docs"
+  llm_extractor_docs_dir: "llm_extractor_docs"
   scanned_docs_lang: "ara" # language of the scanned documents
-
-# AI Service Configuration
-ai_service:
-  system_prompt: "You are a helpful assistant that answers questions based on the provided documentation."
-  default_k: 3
-
