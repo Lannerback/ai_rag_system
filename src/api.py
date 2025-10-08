@@ -19,44 +19,23 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 from contextlib import asynccontextmanager
-from src.ai.builder_dispatcher import BuilderDispatcher
-from src.common.app_context import set_app_context
-from src.ai.vector_store_service.faiss.faiss_vector_store_initializer import VectorStoreInitializer
-from src.ai.vector_store_service.vector_store_facade import VectorStoreFacade
+from src.startup import initialize_vector_store, initialize_rag_facade
 
-rag_facade = None
-
-def startup_event():
-    """Initialize the vector store when the application starts."""
-    start_time = time.perf_counter()
-
-    logging.info("Initializing vector store...")
-    vector_store_initializer = VectorStoreInitializer()
-    vector_store_initializer.initialize_vector_store()
-
-    duration_sec = time.perf_counter() - start_time
-    duration_min = duration_sec / 60
-
-    logging.info(f"Vector store initialized in {duration_min:.2f} minutes "
-                 f"({duration_sec:.2f} seconds).")
-    logging.info("Application startup complete")
-
+rag_facade: RagFacade = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.info("Setting up application...")
-    # Set the environment and vector store
-    # Make app globally accessible
-    set_app_context(app)
-
-    builder = BuilderDispatcher()
-    app.state.llm = builder.get_llm()
-    app.state.embedder = builder.get_embedder_store()
+    try:
+        initialize_vector_store()
+    except Exception as e:
+        logging.error(f"Error initializing vector store: {e}")
+        logging.shutdown()
+        exit(1) 
+        
+    logging.info("Vector store initialized successfully")
     global rag_facade
-    rag_facade = RagFacade()
-    
-    startup_event()
-
+    rag_facade = initialize_rag_facade()
     yield
 
 

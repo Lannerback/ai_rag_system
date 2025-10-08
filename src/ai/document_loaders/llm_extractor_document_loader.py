@@ -10,13 +10,12 @@ import io
 from pdf2image import convert_from_path
 from typing import List, Tuple
 from src.ai.base_llm import BaseLLM
-from src.common.app_context import get_app_context
 
 
 class LlmExtractorDocumentLoader(BaseDocumentLoader):
     """Document loader for scanned PDFs using LLM-based extraction (vision models)."""
     
-    def __init__(self, directory: str, chunk_size: int, chunk_overlap: int, lang: str):
+    def __init__(self, directory: str, chunk_size: int, chunk_overlap: int, lang: str, llm: BaseLLM):
         """
         Initialize LLM-based document extractor for scanned PDFs.
         
@@ -25,7 +24,7 @@ class LlmExtractorDocumentLoader(BaseDocumentLoader):
             chunk_size: Size of text chunks for splitting
             chunk_overlap: Overlap between chunks
             lang: Language of the documents
-            langchain_llm: Optional LangChain LLM instance with vision capabilities (e.g., ChatGoogleGenerativeAI)
+            llm: LangChain LLM instance with vision capabilities (e.g., ChatGoogleGenerativeAI)
         """
         self.__directory: str = directory
         self.__text_splitter = RecursiveCharacterTextSplitter(
@@ -33,7 +32,7 @@ class LlmExtractorDocumentLoader(BaseDocumentLoader):
             chunk_overlap=chunk_overlap,
         )
         self.__lang: str = lang
-        self.__llm: BaseLLM = get_app_context().state.llm
+        self.__llm: BaseLLM = llm
         self.__temp_output_dir = "llm_extracted_text_temp"
         os.makedirs(self.__temp_output_dir, exist_ok=True)
 

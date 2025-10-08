@@ -1,13 +1,11 @@
 from src.ai.vector_store_service.faiss.faiss_vector_store import FaissVectorStore
-from src.ai.document_loaders.document_loader_facade import DocumentLoaderFacade
+from src.ai.vector_store_service.base_vector_store import BaseVectorStore
 import logging
 from typing import List, Dict
-from src.common.app_context import get_app_context
-from src.ai.vector_store_service.base_vector_store import BaseVectorStore
 
 class VectorStoreFacade:
-    def __init__(self):
-        self.__vector_store: BaseVectorStore = FaissVectorStore(get_app_context().state.embedder)
+    def __init__(self, vector_store: BaseVectorStore):
+        self.__vector_store: BaseVectorStore = vector_store
 
     def add_documents(self, texts: List[str], metadatas: List[Dict]):
         self.__vector_store.add_documents(texts, metadatas)

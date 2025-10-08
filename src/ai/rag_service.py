@@ -4,12 +4,11 @@ from src.ai.base_llm import BaseLLM
 from src.ai.vector_store_service.vector_store_facade import VectorStoreFacade
 from src.common.config import CONFIG
 import logging
-from src.common.app_context import get_app_context
 
 class RagService:    
 
-    def __init__(self, vector_store: VectorStoreFacade):
-        self.__llm: BaseLLM = get_app_context().state.llm
+    def __init__(self, llm: BaseLLM, vector_store: VectorStoreFacade):
+        self.__llm: BaseLLM = llm
         self.__vector_store: VectorStoreFacade = vector_store
         
         # Load AI service configuration from config.yaml

@@ -8,6 +8,7 @@ from src.ai.document_loaders.base_document_loader import BaseDocumentLoader
 from src.ai.document_loaders.text_document_loader import TextDocumentLoader
 from src.ai.document_loaders.ocr_document_loader import OcrDocumentLoader
 from src.ai.document_loaders.llm_extractor_document_loader import LlmExtractorDocumentLoader
+from src.ai.service_factory import ServiceFactory
 
 
 class DocumentLoaderFactory:
@@ -46,7 +47,8 @@ class DocumentLoaderFactory:
                 directory=CONFIG["document_loader"]["llm_extractor_docs_dir"],
                 chunk_size=CONFIG["document_loader"]["chunk_size"],
                 chunk_overlap=CONFIG["document_loader"]["chunk_overlap"],
-                lang=CONFIG["document_loader"]["scanned_docs_lang"]
+                lang=CONFIG["document_loader"]["scanned_docs_lang"],
+                llm=ServiceFactory.get_llm()
             )
   
     
