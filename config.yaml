@@ -27,7 +27,8 @@ llm:
   # Set to 'azure' or 'gemini' to choose the AI provider you previsouly set (above)
   provider: "gemini"
   system_prompt: "You are a helpful assistant that answers questions based on the provided documentation. Reply in the same language as the question, unless otherwise specified."
-  default_k: 10
+
+  default_k: 20
   # Azure OpenAI LLM
   azure:
     temperature: 0.1
@@ -43,8 +44,8 @@ llm:
 
 # Document Processing Configuration
 document_loader:
-  chunk_size: 300
-  chunk_overlap: 30
+  chunk_size: 500
+  chunk_overlap: 60
   docs_directory: "docs"
   # directory of the pdf files that are scanned (images) and not proper text
   ocr_docs_dir: "ocr_docs"

@@ -15,13 +15,13 @@ from src.ai.rag_facade import RagFacade
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(
-    level=logging.DEBUG,  # or INFO
+    level=logging.DEBUG, 
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 from contextlib import asynccontextmanager
 from src.startup import initialize_vector_store, initialize_rag_facade
 
-rag_facade: RagFacade = None
+rag_facade: RagFacade
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
