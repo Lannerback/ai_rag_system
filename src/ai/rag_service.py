@@ -4,6 +4,7 @@ from src.ai.base_llm import BaseLLM
 from src.ai.vector_store_service.vector_store_facade import VectorStoreFacade
 from src.common.config import CONFIG
 import logging
+from typing import List, Dict
 
 class RagService:    
 
@@ -23,16 +24,26 @@ class RagService:
         if not relevant_docs:
             raise APIException(detail = "No relevant documentation found for the question.", status_code=400, code = "no_docs_found")
 
-        context = "\n\n".join([doc["content"] for doc in relevant_docs])
-        prompt = f"""Based on the following documentation excerpts, please answer the question.
-                        If you cannot answer the question based on the provided context, say so.
+        # TODO: apply top_p_filter to the relevant docs
+        #relevant_docs = top_p_filter(relevant_docs, p=0.9)
+        
+        context = "\n\n".join(
+                    [f"Document {i+1} (source: {doc['metadata'].get('source', 'unknown')}, page: {doc['metadata'].get('page','?')}):\n{doc['content']}"
+                    for i, doc in enumerate(relevant_docs)]
+                )
+        prompt = f"""You are a helpful assistant that answers questions using only the information provided below.
+                    If the answer is not contained within the documentation, clearly say:
+                    "I don't have enough information to answer this question."
 
-                        Documentation:
-                        {context}
+                    Use the language of the question in your response.
 
-                        Question: {question}
+                    --- DOCUMENTATION EXCERPTS START ---
+                    {context}
+                    --- DOCUMENTATION EXCERPTS END ---
 
-                        Answer:"""
+                    Question: {question}
+
+                    Answer:"""
         response = self.__llm.invoke([
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt}
@@ -42,7 +53,6 @@ class RagService:
             "sources": list({frozenset(doc["metadata"].items()): doc["metadata"] for doc in relevant_docs}.values())
         }
         
-    def _get_relevant_docs(self, query, k=None):
+    def _get_relevant_docs(self, query, k) -> List[Dict]:
         """Retrieve relevant documents for a query."""
-        k = k or self._default_k
         return self.__vector_store.search(query, k=k)
