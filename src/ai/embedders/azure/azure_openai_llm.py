@@ -14,6 +14,7 @@ class AzureLLM(BaseLLM):
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             openai_api_version=CONFIG["azure"]["api_version"],
             temperature=CONFIG["llm"]["azure"]["temperature"],
+            top_p=CONFIG["llm"]["azure"]["top_p"],
             max_tokens=CONFIG["llm"]["azure"]["max_tokens"]
         )
 

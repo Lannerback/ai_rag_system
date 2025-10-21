@@ -26,12 +26,12 @@ llm:
   # Provider Configuration
   # Set to 'azure' or 'gemini' to choose the AI provider you previsouly set (above)
   provider: "gemini"
-  system_prompt: "You are a helpful assistant that answers questions based on the provided documentation. Reply in the same language as the question, unless otherwise specified."
-
+  system_prompt: "You are a helpful assistant that answers questions based on the provided documentation. Reply in the same language as the question, unless otherwise specified." 
   default_k: 20
   # Azure OpenAI LLM
   azure:
     temperature: 0.1
+    top_p: 0.95
     max_tokens: 500
     embeddings_dimension: 1536
   
