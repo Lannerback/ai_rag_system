@@ -45,12 +45,12 @@ temp/
 llm_extracted_text_temp/
 
 docs/**
+ocr_docs/**
+llm_extractor_docs/**
 
 vector_store/
 vector_store_azure
 vector_store_gemini
 vector_store_gemini_md
 backup_docs
-scanned_docs/**
 scripts
-llm_extractor_docs

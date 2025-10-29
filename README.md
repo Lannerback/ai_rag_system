@@ -62,10 +62,23 @@ create **embeddings** from the docs and create the vector store Plug-and-Play Do
 
 ## Folders structure
 ```bash
-├── docs/                  # Documentation files (md/pdf/docx)
+├── docs/                          # Primary knowledge base (MD/PDF/DOCX)
+├── ocr_docs/                      # Scanned PDFs/images to be OCR-processed
+├── llm_extractor_docs/            # Docs for LLM-based text extraction (non-text PDFs)
+├── llm_extracted_text_temp/       # Temporary text extracted by OCR/LLM pipelines
 ├── src/
-│   ├── ai/                # Embedding + LLM abstraction
-│   ├── api.py             # FastAPI entrypoint
+│   ├── ai/
+│   │   ├── embedders/
+│   │   │   ├── azure/             # Azure OpenAI LLM + embeddings
+│   │   │   └── gemini/            # Gemini LLM + embeddings
+│   │   ├── vector_store_service/  # FAISS vector store
+│   │   ├── base_llm.py            # LLM abstraction
+│   │   └── rag_service.py         # RAG orchestration
+│   ├── api.py                     # FastAPI entrypoint
+│   └── common/config.py           # Config loader
+├── vector_store*/                  # Local FAISS stores (default + provider-specific)
+├── scripts/                        # Utilities (OCR, LLM extraction, tests)
+├── tests/                          # Unit tests
 ├── config.yaml
 ├── .env.example
 ├── requirements.txt
@@ -88,20 +101,24 @@ AZURE_OPENAI_ENDPOINT="https://your-azure-openai-instance.openai.azure.com/"
 
 ## Configuration
 
-The `config.yaml` file is the central place to configure various aspects of the RAG system. It allows you to specify which AI models to use, how documents are processed, and other operational parameters.
+The `config.yaml` controls provider selection, model parameters, vector store paths, and document loading.
 
-Here's a breakdown of its key sections:
+- **`azure`**: Azure OpenAI settings: `api_version`, `deployment` (chat model), `embedding_deployment` (embeddings).
+- **`gemini`**: Gemini settings: `model` (chat model), `embedding_model` (embeddings).
+- **`vector_store`**: FAISS file locations: `index_path`, `metadata_path`.
+- **`llm`**: Runtime behavior and provider selection.
+  - `provider`: active provider name (`azure` or `gemini`).
+  - `system_prompt`: system instruction used at query time.
+  - `default_k`: number of chunks to retrieve per query.
+  - `azure`: LLM parameters for Azure (`temperature`, `top_p`, `max_tokens`, `embeddings_dimension`).
+  - `gemini`: LLM parameters for Gemini (`temperature`, `top_p`, `max_output_tokens`, `embeddings_dimension`).
+- **`document_loader`**: Chunking and folders for ingestion.
+  - `chunk_size`, `chunk_overlap`, `docs_directory`.
+  - `ocr_docs_dir`: folder for scanned PDFs/images to run OCR.
+  - `llm_extractor_docs_dir`: folder for non-text PDFs processed via LLM extraction.
+  - `scanned_docs_lang`: ISO code for OCR language.
 
--   **`azure`**: Configuration for Azure OpenAI, including `api_version`, `deployment` for the LLM, and `embedding_deployment` for the embedding model.
--   **`gemini`**: Configuration for Google Gemini, including `model` for the LLM and `embedding_model` for the embedding model.
--   **`providers`**: Specifies which AI provider to use for the Large Language Model (`llm`) and embeddings. You can set these to `azure` or `gemini`.
--   **`vector_store`**: Defines paths for storing the FAISS index and metadata for the vector store.
--   **`embeddings`**: Contains specific configurations for embedding models, such as `dimension` for both Azure and Gemini, and `chunk_size` and `api_version` for Azure.
--   **`llm`**: Contains specific configurations for the Large Language Models, such as `temperature` and `max_tokens` for Azure, and `temperature`, `top_p`, and `max_output_tokens` for Gemini.
--   **`document_loader`**: Configures how documents are loaded and processed, including `chunk_size`, `chunk_overlap`, and the `docs_directory`.
--   **`ai_service`**: Contains general AI service settings like the `system_prompt` and `default_k` (number of relevant chunks to retrieve).
-
-This modular configuration allows you to easily switch between different AI providers and fine-tune the system's behavior without modifying the core code.
+Adjust these values to switch providers and tune retrieval/generation without code changes.
 
 
 ### Key Features
@@ -126,7 +143,7 @@ Exposes an `/ask` endpoint for querying the documentation and receiving answers 
 ### ⚙️ How It Works
 
 - #### 📄 Load Documentation  
-Markdown files are read from the `docs/` folder and split into semantic chunks.
+Content is read from `docs/`, with optional intake from `ocr_docs/` (scanned PDFs/images via OCR) and `llm_extractor_docs/` (LLM-based text extraction from scanned file, like OCR but better perfomances). Files are split into semantic chunks.
 
 - #### 🔢 Generate Embeddings  
 Each chunk is converted into a vector using your configured LLM provider.
@@ -141,13 +158,15 @@ Users send questions to the `/ask` endpoint. The system retrieves the top releva
 ## Add new provider support
 To add support for a new AI provider, follow these steps:
 
-1.  **Create a new folder:** Inside the `src/ai/` directory, create a new folder with the name of your provider (e.g., `src/ai/my_new_provider/`).
-2.  **Implement `BaseEmbedder`:** Within your new provider folder, create a class that implements the abstract class `src/ai/base_embedder.py`.
-3.  **Implement `BaseLLM`:** Also within your new provider folder, create a class that implements the abstract class `src/ai/base_llm.py`.
-4.  **Update `builder_dispatcher`:** Modify `src/ai/builder_dispatcher.py` to include your new provider's classes for both embeddings and LLM, allowing the system to correctly instantiate them based on the `config.yaml` settings.
-5.  **Update `config.yaml`:** Add a new section for your provider in `config.yaml` and update the `providers.llm` and `providers.embeddings` fields to reference your new provider.
+1. **Create provider module**: add `src/ai/embedders/<provider>/` with two files:
+   - `<provider>_embedder.py` implementing `src/ai/embedders/base_embedder.py`.
+   - `<provider>_llm.py` implementing `src/ai/base_llm.py`.
+2. **Export classes**: update `src/ai/embedders/<provider>/__init__.py` as needed.
+3. **Wire the factory**: add the provider to `ServiceFactory.PROVIDERS` in `src/ai/service_factory.py` with `{"llm": <YourLLM>, "embedder": <YourEmbedder>}`.
+4. **Extend configuration**: add a top-level section in `config.yaml` for provider-specific settings (models, embeddings), and set `llm.provider` to your provider name.
+5. **Test**: run ingestion and a sample query to verify embeddings and chat paths work end-to-end.
 
-By following this structure, you can seamlessly integrate new AI models while maintaining a clear and modular codebase.
+This keeps the integration consistent with existing Azure and Gemini providers.
 
 ## Tech choices
 
