@@ -11,7 +11,9 @@ azure:
 # Gemini Configuration in case you want to use Gemini
 gemini:
   model: gemini-2.5-pro
-  embedding_model: models/embedding-001
+  # Use the current Gemini embeddings model (the older `models/embedding-001` may be unavailable/unsupported).
+  # `langchain_google_genai` will automatically prefix this as `models/...` if needed.
+  embedding_model: gemini-embedding-2-preview
 
 
 
@@ -40,12 +42,12 @@ llm:
     temperature: 0.1
     top_p: 0.95
     max_output_tokens: 500
-    embeddings_dimension: 768
+    embeddings_dimension: 3072
 
 # Document Processing Configuration
 document_loader:
-  chunk_size: 500
-  chunk_overlap: 60
+  chunk_size: 1500
+  chunk_overlap: 150
   docs_directory: "docs"
   # directory of the pdf files that are scanned (images) and not proper text
   ocr_docs_dir: "ocr_docs"

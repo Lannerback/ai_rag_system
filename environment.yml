@@ -23,4 +23,5 @@ dependencies:
       - langchain-text-splitters==0.3.11
       - langchain-openai==0.3.33
       - langchain-google-genai==2.1.12
+      - pymupdf
       - unstructured[local-inference,pdf]==0.18.15
