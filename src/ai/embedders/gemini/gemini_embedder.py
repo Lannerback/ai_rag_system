@@ -13,10 +13,29 @@ class GeminiEmbedder(BaseEmbedder):
         self._dimension = CONFIG["llm"]["gemini"]["embeddings_dimension"]
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return self.embeddings.embed_documents(texts)
+        vectors = self.embeddings.embed_documents(
+            texts,
+            output_dimensionality=self._dimension,
+        )
+        for index, vector in enumerate(vectors):
+            if len(vector) != self._dimension:
+                raise ValueError(
+                    f"Gemini returned doc embedding dim {len(vector)} for chunk {index}, "
+                    f"expected {self._dimension}. Check `llm.gemini.embeddings_dimension`."
+                )
+        return vectors
 
     def embed_query(self, query: str) -> List[float]:
-        return self.embeddings.embed_query(query)
+        vector = self.embeddings.embed_query(
+            query,
+            output_dimensionality=self._dimension,
+        )
+        if len(vector) != self._dimension:
+            raise ValueError(
+                f"Gemini returned query embedding dim {len(vector)}, expected {self._dimension}. "
+                f"Check `llm.gemini.embeddings_dimension`."
+            )
+        return vector
 
     @property
     def dimension(self) -> int:

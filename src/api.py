@@ -18,6 +18,9 @@ logging.basicConfig(
     level=logging.DEBUG, 
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+logging.getLogger("pdfminer").setLevel(logging.WARNING)
+logging.getLogger("pypdf").setLevel(logging.WARNING)
+logging.getLogger("unstructured").setLevel(logging.INFO)
 from contextlib import asynccontextmanager
 from src.startup import initialize_vector_store, initialize_rag_facade
 
@@ -60,6 +63,7 @@ class Question(BaseModel):
 class Answer(BaseModel):
     answer: str
     sources: list[Dict]
+    chunks: list[Dict]
 
 @app.post("/ask", response_model=Answer)
 async def ask_question(question: Question):

@@ -48,9 +48,44 @@ class RagService:
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt}
         ])
+
+        chunks = []
+        for doc in relevant_docs:
+            metadata = doc.get("metadata") or {}
+            chunks.append({
+                "chunk_id": metadata.get("chunk_id"),
+                "chunk_index": metadata.get("chunk_index"),
+                "faiss_index": metadata.get("faiss_index"),
+                "rank": metadata.get("retrieval_rank"),
+                "score": metadata.get("retrieval_score"),
+                "source": metadata.get("source", metadata.get("file_path", "unknown")),
+                "page": metadata.get("page", "?"),
+            })
+
+        source_metadata_keys_to_exclude = {
+            "chunk_id",
+            "chunk_index",
+            "faiss_index",
+            "retrieval_rank",
+            "retrieval_score",
+        }
+
+        unique_sources = []
+        seen = set()
+        for doc in relevant_docs:
+            metadata = dict(doc.get("metadata") or {})
+            for key in source_metadata_keys_to_exclude:
+                metadata.pop(key, None)
+            frozen = frozenset(metadata.items())
+            if frozen in seen:
+                continue
+            seen.add(frozen)
+            unique_sources.append(metadata)
+
         return {
             "answer": response.content,
-            "sources": list({frozenset(doc["metadata"].items()): doc["metadata"] for doc in relevant_docs}.values())
+            "sources": unique_sources,
+            "chunks": chunks,
         }
         
     def _get_relevant_docs(self, query, k) -> List[Dict]:

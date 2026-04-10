@@ -23,6 +23,13 @@ class FaissVectorStore(BaseVectorStore):
             self.index = faiss.read_index(self._index_path)
             with open(self._metadata_path, "rb") as f:
                 self.documents = pickle.load(f)
+
+            if self.index.d != self.embedder.dimension:
+                raise ValueError(
+                    f"Loaded FAISS index dimension ({self.index.d}) does not match "
+                    f"configured embedder dimension ({self.embedder.dimension}). "
+                    f"Rebuild the vector store for the current embedding model/dimension."
+                )
             return True
         return False
 
@@ -41,6 +48,13 @@ class FaissVectorStore(BaseVectorStore):
         logging.debug(f"embed_documents took {time.time() - start:.2f}s")
 
         embeddings_np = np.array(embeddings).astype("float32")
+        if embeddings_np.ndim != 2 or embeddings_np.shape[1] == 0:
+            raise ValueError("Invalid embeddings shape returned by provider.")
+        if embeddings_np.shape[1] != self.index.d:
+            raise ValueError(
+                f"Document embedding dimension ({embeddings_np.shape[1]}) does not match "
+                f"FAISS index dimension ({self.index.d}). Check embedder dimension config."
+            )
         faiss.normalize_L2(embeddings_np)
         self.index.add(embeddings_np)
 
@@ -55,6 +69,31 @@ class FaissVectorStore(BaseVectorStore):
     def search(self, query: str, k: int = 3) -> List[Dict]:
         query_embedding = self.embedder.embed_query(query)
         query_np = np.array([query_embedding]).astype("float32")
+        if query_np.shape[1] != self.index.d:
+            raise ValueError(
+                f"Query embedding dimension ({query_np.shape[1]}) does not match "
+                f"FAISS index dimension ({self.index.d}). Rebuild vector store or "
+                f"use a matching embedding model."
+            )
         faiss.normalize_L2(query_np)
-        _, I = self.index.search(query_np, k)
-        return [self.documents[idx] for idx in I[0] if idx < len(self.documents)]
+        D, I = self.index.search(query_np, k)
+
+        results: List[Dict] = []
+        for rank, (idx, score) in enumerate(zip(I[0], D[0]), start=1):
+            if idx >= len(self.documents):
+                continue
+
+            doc = self.documents[idx]
+            metadata = dict(doc.get("metadata") or {})
+            metadata["faiss_index"] = int(idx)
+            metadata["retrieval_rank"] = rank
+            metadata["retrieval_score"] = float(score)
+            metadata["chunk_index"] = metadata.get("chunk_index", int(idx))
+            metadata["chunk_id"] = metadata.get("chunk_id", f"faiss-{idx}")
+
+            results.append({
+                "content": doc.get("content", ""),
+                "metadata": metadata,
+            })
+
+        return results
