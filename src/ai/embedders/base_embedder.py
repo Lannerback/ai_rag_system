@@ -17,3 +17,15 @@ class BaseEmbedder(ABC):
     def dimension(self) -> int:
         """Return the dimension of embeddings for this embedder."""
         pass
+
+    @property
+    @abstractmethod
+    def provider(self) -> str:
+        """Provider identifier (e.g. 'azure', 'gemini'); binds a collection to its source."""
+        pass
+
+    @property
+    @abstractmethod
+    def model(self) -> str:
+        """Concrete embedding model/deployment name used to produce vectors."""
+        pass

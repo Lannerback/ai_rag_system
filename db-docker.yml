@@ -1,0 +1,21 @@
+services:
+  db:
+    image: pgvector/pgvector:0.8.3-pg18-trixie
+    container_name: pgvector
+    environment:
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: rag
+      POSTGRES_USER: admin
+    ports:
+      - "5433:5432"
+    volumes:
+      - rag_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rag_data:
+    name: rag_data

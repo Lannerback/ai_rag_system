@@ -69,9 +69,11 @@ async def ask_question(question: Question):
     logging.info(f"Received question: {question.text}")
     
     try:
-        response = rag_facade.answer_question(question.text)                                    
+        response = rag_facade.answer_question(question.text)
         return response
-            
+
+    except APIException:
+        raise
     except Exception as e:
         logger.exception("Unhandled exception in /ask")
         raise HTTPException(status_code=500, detail=str(e)) from e

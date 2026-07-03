@@ -3,6 +3,7 @@ from src.common.APIException import APIException
 from src.ai.base_llm import BaseLLM
 from src.ai.vector_store_service.vector_store_facade import VectorStoreFacade
 from src.common.config import CONFIG
+import json
 import logging
 from typing import List, Dict
 
@@ -48,9 +49,14 @@ class RagService:
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt}
         ])
+        seen_sources: Dict[str, Dict] = {}
+        for doc in relevant_docs:
+            key = json.dumps(doc["metadata"], sort_keys=True, default=str)
+            seen_sources.setdefault(key, doc["metadata"])
+
         return {
             "answer": response.content,
-            "sources": list({frozenset(doc["metadata"].items()): doc["metadata"] for doc in relevant_docs}.values())
+            "sources": list(seen_sources.values())
         }
         
     def _get_relevant_docs(self, query, k) -> List[Dict]:

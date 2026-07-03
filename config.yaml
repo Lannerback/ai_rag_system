@@ -11,14 +11,25 @@ azure:
 # Gemini Configuration in case you want to use Gemini
 gemini:
   model: gemini-2.5-pro
-  embedding_model: models/embedding-001
+  embedding_model: models/gemini-embedding-001
 
 
 
 # Vector Store Configuration
 vector_store:
+  # Available options: 
+  # 1. faiss
+  # 2. pgvector
+  backend: "pgvector"
+  # Logical collection name (pgvector backend). A collection is permanently bound
+  # to one embedding provider/model/dimension.
+  collection: "default"
+  # FAISS backend settings (used when backend: faiss)
   index_path: "vector_store/faiss.index"
   metadata_path: "vector_store/metadata.pkl"
+  # pgvector backend settings (used when backend: pgvector)
+  pgvector:
+    metric: "cosine"
 
 
 # Language Models Configuration
@@ -40,12 +51,12 @@ llm:
     temperature: 0.1
     top_p: 0.95
     max_output_tokens: 500
-    embeddings_dimension: 768
+    embeddings_dimension: 3072
 
 # Document Processing Configuration
 document_loader:
-  chunk_size: 500
-  chunk_overlap: 60
+  chunk_size: 1200
+  chunk_overlap: 150
   docs_directory: "docs"
   # directory of the pdf files that are scanned (images) and not proper text
   ocr_docs_dir: "ocr_docs"

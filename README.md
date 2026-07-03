@@ -60,6 +60,30 @@ The system supports both Gemini and Azure OpenAI models interchangeably, thanks 
 The application at the startup will check if the **vector_store** folder already exists, if so, it will start loading the **vector store from local disk**, otherwise it will 
 create **embeddings** from the docs and create the vector store Plug-and-Play Docs Support (Markdown, PDF, DOCX)plugfolder.
 
+### Alternative: using `uv`
+
+[`uv`](https://docs.astral.sh/uv/) is fully supported as a faster alternative to the conda/pip setup
+above (steps 2 and 5). Both paths install the same pinned dependencies; pick whichever you prefer.
+
+1. System prerequisites (not pip-installable — provide the `pdftoppm`/`pdftocairo` and OCR binaries
+   used by the PDF/OCR loaders):
+   ```bash
+   brew install poppler tesseract        # macOS
+   # apt-get install poppler-utils tesseract-ocr   # Debian/Ubuntu
+   ```
+2. Install dependencies (runtime + dev tools) and create `.venv/`:
+   ```bash
+   uv sync --group dev
+   ```
+3. Continue with steps 3–4 above (`.env`, provider selection in `config.yaml`), then:
+   ```bash
+   uv run alembic upgrade head                                  # if using the pgvector backend
+   uv run python -m src.ingestion --collection default          # ingest docs (add --rebuild to re-embed everything)
+   uv run python main.py                                        # start the app
+   uv run pytest tests/                                         # run tests
+   uv run ruff check src/                                       # lint
+   ```
+
 ## Folders structure
 ```bash
 ├── docs/                          # Primary knowledge base (MD/PDF/DOCX)
@@ -91,12 +115,14 @@ Set API keys in your `.env` file. See [.env.example](.env.example) for required 
 -   `GOOGLE_API_KEY`: Your API key for Google Gemini. This is required if `providers.llm` or `providers.embeddings` in `config.yaml` is set to `gemini`.
 -   `AZURE_OPENAI_API_KEY`: Your API key for Azure OpenAI. This is required if `providers.llm` or `providers.embeddings` in `config.yaml` is set to `azure`.
 -   `AZURE_OPENAI_ENDPOINT`: The endpoint URL for your Azure OpenAI service. Required if using Azure OpenAI.
+-   `DATABASE_URL`: PostgreSQL connection string. Required only when `vector_store.backend` is `pgvector`.
 
 Example `.env` file:
 ```
 GOOGLE_API_KEY="your_GOOGLE_API_KEY_here"
 AZURE_OPENAI_API_KEY="your_azure_openai_api_key_here"
 AZURE_OPENAI_ENDPOINT="https://your-azure-openai-instance.openai.azure.com/"
+DATABASE_URL="postgresql+psycopg://admin:admin@localhost:5433/rag"
 ```
 
 ## Configuration
@@ -105,7 +131,11 @@ The `config.yaml` controls provider selection, model parameters, vector store pa
 
 - **`azure`**: Azure OpenAI settings: `api_version`, `deployment` (chat model), `embedding_deployment` (embeddings).
 - **`gemini`**: Gemini settings: `model` (chat model), `embedding_model` (embeddings).
-- **`vector_store`**: FAISS file locations: `index_path`, `metadata_path`.
+- **`vector_store`**: Backend selection and storage settings.
+  - `backend`: active vector store (`faiss` or `pgvector`). Resolved at startup via a provider registry — no code changes to switch.
+  - `collection`: pgvector logical collection name (bound to one embedding provider/model/dimension).
+  - `index_path`, `metadata_path`: FAISS file locations (used when `backend: faiss`).
+  - `pgvector.metric`: similarity metric for the pgvector backend.
 - **`llm`**: Runtime behavior and provider selection.
   - `provider`: active provider name (`azure` or `gemini`).
   - `system_prompt`: system instruction used at query time.
@@ -119,6 +149,35 @@ The `config.yaml` controls provider selection, model parameters, vector store pa
   - `scanned_docs_lang`: ISO code for OCR language.
 
 Adjust these values to switch providers and tune retrieval/generation without code changes.
+
+## Vector store backends
+
+The backend is chosen by `vector_store.backend` and resolved through a provider registry
+(`ServiceFactory.VECTOR_STORE_PROVIDERS`), so switching never touches application code.
+
+### FAISS (default file-based)
+Set `vector_store.backend: faiss`. The index and metadata are loaded from / built to the paths
+in `vector_store.index_path` / `metadata_path` at startup, exactly as before.
+
+### PostgreSQL + pgvector
+Set `vector_store.backend: pgvector` and provide `DATABASE_URL`. Data lives in a
+`embedding_collections → documents → chunks` schema; ingestion is an explicit, idempotent command.
+
+1. Start a pgvector-enabled PostgreSQL (or use `docker compose up -d db`).
+2. Apply the schema (creates the `vector` extension and tables):
+   ```bash
+   alembic upgrade head
+   ```
+3. Ingest documents into a collection:
+   ```bash
+   python -m src.ingestion --collection default        # incremental (checksum-based)
+   python -m src.ingestion --collection default --rebuild  # re-embed everything
+   ```
+   Ingestion skips unchanged sources, replaces changed ones in a per-document transaction,
+   and prunes sources no longer present. A collection is permanently bound to the embedder's
+   provider/model/dimension; mismatches fail fast at startup and ingestion.
+
+The app startup does **not** build pgvector data — run ingestion explicitly.
 
 
 ### Key Features
