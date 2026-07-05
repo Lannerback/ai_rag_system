@@ -1,0 +1,3 @@
+1. split embedding model with model, so that i can use a model from azure with the embedder from gemini etc.. 
+2. evaluate teh usage of cloud vision or a better OCR than tesseract
+3. improve multilingual support, docs can be written in different languages in the same folder

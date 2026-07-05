@@ -1,6 +1,5 @@
 """Module for handling document embeddings and vector storage."""
 import os
-import numpy as np
 from langchain_openai import AzureOpenAIEmbeddings
 
 from src.ai.embedders.base_embedder import BaseEmbedder
@@ -9,7 +8,8 @@ from src.common.config import CONFIG
 class AzureEmbedder(BaseEmbedder):
     def __init__(self):
         self._dimension = CONFIG["llm"]["azure"]["embeddings_dimension"]
-    
+        self._model = CONFIG["azure"]["embedding_deployment"]
+
         self.embeddings: AzureOpenAIEmbeddings = AzureOpenAIEmbeddings(
             azure_deployment=CONFIG["azure"]["embedding_deployment"],
             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -26,3 +26,11 @@ class AzureEmbedder(BaseEmbedder):
     @property
     def dimension(self) -> int:
         return self._dimension
+
+    @property
+    def provider(self) -> str:
+        return "azure"
+
+    @property
+    def model(self) -> str:
+        return self._model

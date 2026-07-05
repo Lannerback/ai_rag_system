@@ -1,0 +1,46 @@
+[project]
+name = "ai-rag-system"
+version = "0.1.0"
+description = "Documentation-based RAG system supporting Gemini and Azure OpenAI"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi==0.118",
+    "uvicorn==0.37",
+    "python-dotenv==1.1.1",
+    "python-multipart==0.0.20",
+    "numpy<2",
+    "faiss-cpu==1.9",
+    "pytesseract",
+    "pdf2image",
+    "pillow",
+    "charset-normalizer==3.4.3",
+    "langchain==0.3.27",
+    "langchain-community==0.3.30",
+    "langchain-text-splitters==0.3.11",
+    "langchain-openai==0.3.33",
+    "langchain-google-genai==2.1.12",
+    "unstructured[local-inference,pdf]==0.18.15",
+    "sqlalchemy==2.0.43",
+    "alembic==1.18.5",
+    "psycopg[binary]==3.3.4",
+    "pgvector==0.4.2",
+    "tenacity",
+    "flashrank==0.2.10",
+    "sentence-transformers==5.6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "ruff==0.15.11",
+]
+
+[project.scripts]
+dev = "src.dev:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

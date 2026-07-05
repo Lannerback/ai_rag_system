@@ -24,3 +24,7 @@ dependencies:
       - langchain-openai==0.3.33
       - langchain-google-genai==2.1.12
       - unstructured[local-inference,pdf]==0.18.15
+      - sqlalchemy==2.0.43
+      - alembic==1.18.5
+      - psycopg[binary]==3.3.4
+      - pgvector==0.4.2
