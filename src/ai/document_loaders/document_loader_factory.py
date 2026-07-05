@@ -1,9 +1,8 @@
 """Factory for creating document loaders based on configuration."""
 import logging
-from typing import List, Optional
+from typing import List
 
 from src.common.config import CONFIG
-from src.ai.base_llm import BaseLLM
 from src.ai.document_loaders.base_document_loader import BaseDocumentLoader
 from src.ai.document_loaders.text_document_loader import TextDocumentLoader
 from src.ai.document_loaders.ocr_document_loader import OcrDocumentLoader
@@ -25,7 +24,8 @@ class DocumentLoaderFactory:
         return TextDocumentLoader(
             directory=CONFIG["document_loader"]["docs_directory"],
             chunk_size=CONFIG["document_loader"]["chunk_size"],
-            chunk_overlap=CONFIG["document_loader"]["chunk_overlap"]
+            chunk_overlap=CONFIG["document_loader"]["chunk_overlap"],
+            pdf_strategy=CONFIG["document_loader"].get("pdf_strategy", "fast"),
         )
     
     @staticmethod

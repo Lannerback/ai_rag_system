@@ -31,13 +31,13 @@ The system supports both Gemini and Azure OpenAI models interchangeably, thanks 
    cp .env.example .env
    # Edit .env and insert your API keys
 4. Select provider
-   Select the LLM provider you want to use in the **[config.yaml](./config.yaml)** file, in the **providers** section for both llm and embeddings 
-   ```bash
-   # Provider Configuration
-   # Set to 'azure' or 'gemini' to choose the AI provider
-   providers:
-      llm: "gemini" # or "azure"
-      embeddings: "gemini" # or "azure"
+   Select the AI provider you want to use in the **[config.yaml](./config.yaml)** file. A
+   single `llm.provider` value drives both the chat model and the embeddings for that
+   provider.
+   ```yaml
+   llm:
+     # Set to 'azure' or 'gemini' to choose the AI provider
+     provider: "gemini"   # or "azure"
    ```
 5. Install dependencies:
    ```bash
@@ -95,7 +95,10 @@ above (steps 2 and 5). Both paths install the same pinned dependencies; pick whi
 │   │   ├── embedders/
 │   │   │   ├── azure/             # Azure OpenAI LLM + embeddings
 │   │   │   └── gemini/            # Gemini LLM + embeddings
-│   │   ├── vector_store_service/  # FAISS vector store
+│   │   ├── vector_store_service/  # pgvector + FAISS backends (registry-selected)
+│   │   ├── rerankers/             # BGE / FlashRank cross-encoder rerankers
+│   │   ├── diversity/             # MMR diversity selector (config-disabled)
+│   │   ├── document_loaders/      # partition + clean + chunk + legal tagging
 │   │   ├── base_llm.py            # LLM abstraction
 │   │   └── rag_service.py         # RAG orchestration
 │   ├── api.py                     # FastAPI entrypoint
@@ -139,16 +142,33 @@ The `config.yaml` controls provider selection, model parameters, vector store pa
 - **`llm`**: Runtime behavior and provider selection.
   - `provider`: active provider name (`azure` or `gemini`).
   - `system_prompt`: system instruction used at query time.
-  - `default_k`: number of chunks to retrieve per query.
+  - `default_k`: **legacy** raw-recall knob. No longer drives `/ask` (see `retrieval:`);
+    kept only for the raw vector-search regression tests.
   - `azure`: LLM parameters for Azure (`temperature`, `top_p`, `max_tokens`, `embeddings_dimension`).
   - `gemini`: LLM parameters for Gemini (`temperature`, `top_p`, `max_output_tokens`, `embeddings_dimension`).
+- **`retrieval`**: The three-stage `/ask` pipeline.
+  - `candidate_k` (120): wide vector-recall pool size (stage 1).
+  - `min_similarity` (0.5): cosine-similarity floor on the pool (stage 2); `0.0`/absent disables it.
+  - `rerank_k` (30): kept after cross-encoder reranking (stage 3).
+  - `final_k` (12): chunks fed into the LLM context (stage 4).
+- **`reranking`**: Cross-encoder second-pass scoring.
+  - `enabled` (true): set `false` to skip reranking entirely.
+  - `provider` (`bge`): `bge` (`BAAI/bge-reranker-v2-m3`) or `flashrank` (`ms-marco-MiniLM-L-12-v2`).
+  - `bge.model` / `flashrank.model`: model id per backend.
+- **`diversity`**: MMR redundancy-aware final selection. **Commented out by default** (MMR
+  disabled → pipeline returns top `final_k`). Uncomment to enable.
+  - `strategy` (`mmr`), `lambda_mult` (0.6): 1.0 = pure relevance, 0.0 = pure diversity.
 - **`document_loader`**: Chunking and folders for ingestion.
-  - `chunk_size`, `chunk_overlap`, `docs_directory`.
+  - `chunk_size` (1200), `chunk_overlap` (150): `chunk_by_title` sizing.
+  - `pdf_strategy` (`fast`): Unstructured `partition_pdf` strategy (`fast` | `hi_res`).
+  - `docs_directory`: primary document folder.
   - `ocr_docs_dir`: folder for scanned PDFs/images to run OCR.
   - `llm_extractor_docs_dir`: folder for non-text PDFs processed via LLM extraction.
   - `scanned_docs_lang`: ISO code for OCR language.
 
 Adjust these values to switch providers and tune retrieval/generation without code changes.
+The rationale for each retrieval/reranking/chunking choice is documented in
+[documentation/architect-choices.md](./documentation/architect-choices.md).
 
 ## Vector store backends
 
@@ -188,8 +208,14 @@ Add `.md` files to the `docs/` folder — no special formatting needed.
 - #### Embedding Generation  
 Converts your documentation into vector embeddings using either **Azure OpenAI** or **Gemini**, depending on your configuration.
 
-- #### Local Vector Store with FAISS  
-Stores embeddings on disk and then retrieve them at startup for the semantic search. NB: This will be replaced with a vector db soon
+- #### Vector Store: pgvector or FAISS
+PostgreSQL + pgvector is the primary backend (idempotent ingestion, checksum-based change
+detection, collection/dimension validation). A file-based FAISS backend is also available;
+switch with `vector_store.backend` — no code changes.
+
+- #### Retrieve-then-rerank pipeline
+Wide cosine vector recall → `min_similarity` floor → local BGE cross-encoder reranking →
+optional MMR diversity → top `final_k` into the LLM. Each stage is timed and logged.
 
 - #### Flexible Model Switching  
 Easily switch between providers (**Azure**, **Gemini**) via environment variables.
@@ -204,14 +230,24 @@ Exposes an `/ask` endpoint for querying the documentation and receiving answers 
 - #### 📄 Load Documentation  
 Content is read from `docs/`, with optional intake from `ocr_docs/` (scanned PDFs/images via OCR) and `llm_extractor_docs/` (LLM-based text extraction from scanned file, like OCR but better perfomances). Files are split into semantic chunks.
 
-- #### 🔢 Generate Embeddings  
-Each chunk is converted into a vector using your configured LLM provider.
+- #### 📑 Clean & Chunk
+PDFs are partitioned with Unstructured (`fast` strategy), stripped of layout noise
+(headers/footers/page markers) by `ElementCleaner`, chunked section-aware with
+`chunk_by_title`, and legal continuation chunks are re-anchored to their `Article` heading.
 
-- #### 💾 Store with FAISS  
-Embeddings are saved locally using FAISS for efficient similarity search.
+- #### 🔢 Generate Embeddings  
+Each chunk is converted into a vector using your configured provider (Gemini uses asymmetric
+`RETRIEVAL_DOCUMENT`/`RETRIEVAL_QUERY` task types for better retrieval).
+
+- #### 💾 Store in pgvector  
+Embeddings, chunk text, and metadata are stored in PostgreSQL + pgvector (FAISS is also
+supported as a file-based backend, selectable via `vector_store.backend`).
 
 - #### 🤖 Query via API  
-Users send questions to the `/ask` endpoint. The system retrieves the top relevant chunks and passes them to the LLM to generate a grounded response.
+Users send questions to the `/ask` endpoint. A three-stage pipeline runs — wide cosine
+vector recall (`candidate_k`) → `min_similarity` floor → **BGE cross-encoder reranking**
+(`rerank_k`) → optional MMR diversity → top `final_k` chunks — then passes the final chunks
+to the LLM for a grounded response.
 
 
 ## Add new provider support
@@ -247,7 +283,25 @@ For example:
 
 These sentences use different words, but their embedding points are in the same direction. Cosine similarity captures that, while metrics like Euclidean distance would be sensitive to length differences.
 
+### Why a retrieve-then-rerank pipeline?
+A bi-encoder vector search is high-recall but low-precision. Casting a wide net
+(`candidate_k=120`) and then rescoring with an expensive, high-accuracy **cross-encoder**
+recovers precision without running the cross-encoder over the whole corpus. A
+`min_similarity=0.5` cosine floor trims off-topic tail noise first.
 
+### Why BGE over FlashRank for the reranker?
+FlashRank (`ms-marco-MiniLM`) is trained on short, general-domain English web search and
+**degraded** ranking on our legal corpus (MRR 0.672 → 0.513). `BAAI/bge-reranker-v2-m3` is
+larger, multilingual, and trained on longer/formal passages, so it beats flat vector search
+on the legal gold set. Both run locally; switch via `reranking.provider`.
+
+### Why is MMR disabled?
+MMR diversity is implemented but switched off: after the ingestion-cleanup fixes the
+reranked top-12 were already diverse, so MMR added embedding-fetch cost with no recall gain.
+Re-enable by uncommenting the `diversity:` block.
+
+Full rationale for every technology and threshold:
+[documentation/architect-choices.md](./documentation/architect-choices.md).
 
 ## License
 

@@ -52,9 +52,19 @@ class FaissVectorStore(BaseVectorStore):
 
         self.save_to_disk()
 
-    def search(self, query: str, k: int = 3) -> List[Dict]:
+    def search(self, query: str, k: int = 3, with_embeddings: bool = False) -> List[Dict]:
+        if with_embeddings:
+            raise NotImplementedError(
+                "FAISS backend does not yet expose stored embeddings; "
+                "implement with_embeddings=True to enable MMR on this backend."
+            )
         query_embedding = self.embedder.embed_query(query)
         query_np = np.array([query_embedding]).astype("float32")
         faiss.normalize_L2(query_np)
-        _, I = self.index.search(query_np, k)
-        return [self.documents[idx] for idx in I[0] if idx < len(self.documents)]
+        # IndexFlatIP over L2-normalized vectors => inner product == cosine similarity.
+        scores, indices = self.index.search(query_np, k)
+        return [
+            {**self.documents[idx], "score": float(score)}
+            for score, idx in zip(scores[0], indices[0])
+            if idx < len(self.documents)
+        ]

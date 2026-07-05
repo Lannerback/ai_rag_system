@@ -60,7 +60,7 @@ class PgVectorStore(BaseVectorStore):
                     collection, source, items, document_repo, chunk_repo, writer
                 )
 
-    def search(self, query: str, k: int = 3) -> List[Dict]:
+    def search(self, query: str, k: int = 3, with_embeddings: bool = False) -> List[Dict]:
         with get_session() as session:
             collection = CollectionRepository(session).get_by_name(self._collection_name)
             if collection is None:
@@ -73,9 +73,25 @@ class PgVectorStore(BaseVectorStore):
 
             rows = ChunkRepository(session).search(collection.id, query_embedding, k)
             return [
-                {"content": chunk.content, "metadata": self._mapper.to_metadata(chunk, source)}
-                for chunk, source in rows
+                self._to_result(chunk, source, distance, with_embeddings)
+                for chunk, source, distance in rows
             ]
+
+    def _to_result(self, chunk, source: str, distance: float, with_embeddings: bool) -> Dict:
+        # pgvector cosine_distance == 1 - cosine_similarity; surface similarity as score.
+        result: Dict = {
+            "content": chunk.content,
+            "metadata": self._mapper.to_metadata(chunk, source),
+            "score": 1.0 - distance,
+        }
+        if with_embeddings:
+            result["embedding"] = self._as_float_list(chunk.embedding)
+        return result
+
+    @staticmethod
+    def _as_float_list(embedding) -> List[float]:
+        """Normalize a pgvector column value (numpy array or list) to List[float]."""
+        return embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
 
     def _replace_document(
         self,

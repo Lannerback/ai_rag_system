@@ -1,29 +1,11 @@
 from types import SimpleNamespace
 
-import pytest
-
 from src.ai.document_loaders.text_document_loader import TextDocumentLoader
-
-
-def _element(category):
-    return SimpleNamespace(category=category)
 
 
 def _chunk(text, *, filename="reg.pdf", page_number=1, languages=("eng",)):
     metadata = SimpleNamespace(filename=filename, page_number=page_number, languages=list(languages))
     return SimpleNamespace(text=text, metadata=metadata)
-
-
-@pytest.mark.parametrize("category", ["Header", "Footer", "PageNumber", "PageBreak", "Image"])
-def test_keep_element_drops_layout_chrome(category):
-    assert TextDocumentLoader._keep_element(_element(category)) is False
-
-
-@pytest.mark.parametrize(
-    "category", ["Title", "NarrativeText", "ListItem", "Table", "UncategorizedText"]
-)
-def test_keep_element_keeps_content(category):
-    assert TextDocumentLoader._keep_element(_element(category)) is True
 
 
 def test_chunks_mapping_prunes_metadata_and_maps_page_language():

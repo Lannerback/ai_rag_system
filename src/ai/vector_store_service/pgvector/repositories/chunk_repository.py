@@ -29,14 +29,15 @@ class ChunkRepository:
 
     def search(
         self, collection_id: uuid.UUID, query_embedding: List[float], k: int
-    ) -> List[Tuple[Chunk, str]]:
-        """Return the k nearest chunks (by cosine distance) with their document source."""
+    ) -> List[Tuple[Chunk, str, float]]:
+        """Return the k nearest chunks with their document source and cosine distance."""
+        distance = Chunk.embedding.cosine_distance(query_embedding).label("distance")
         stmt = (
-            select(Chunk)
+            select(Chunk, distance)
             .options(joinedload(Chunk.document))
             .where(Chunk.collection_id == collection_id)
-            .order_by(Chunk.embedding.cosine_distance(query_embedding))
+            .order_by(distance)
             .limit(k)
         )
-        chunks = self._session.scalars(stmt).all()
-        return [(chunk, chunk.document.source) for chunk in chunks]
+        rows = self._session.execute(stmt).all()
+        return [(chunk, chunk.document.source, dist) for chunk, dist in rows]

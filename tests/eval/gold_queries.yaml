@@ -1,0 +1,62 @@
+# Gold retrieval set for the EU AI Act (Regulation (EU) 2024/1689).
+# Each query lists `expected_any`: substrings that identify a correct answer chunk.
+# A query is "hit" at rank R if ANY expected substring appears in the chunk at rank R.
+# Substrings are matched case-insensitively after whitespace normalization.
+#
+# IMPORTANT: every substring below was verified to exist verbatim (post whitespace
+# normalization) in the ingested `ranking_fixture` chunks. Do not add snippets from
+# memory — grep the actual chunks first, or the metric is meaningless.
+queries:
+  - id: purpose
+    question: "What is the purpose of Regulation (EU) 2024/1689?"
+    expected_any:
+      - "purpose of this Regulation is to improve the functioning of the internal market"
+
+  - id: prohibited_practices
+    question: "Which AI practices are prohibited?"
+    expected_any:
+      - "following AI practices shall be prohibited"
+
+  - id: high_risk_classification
+    question: "When is an AI system classified as high-risk?"
+    expected_any:
+      - "that AI system shall be considered to be high-risk where both of the following conditions"
+      - "Classification rules for high-risk AI systems"
+
+  - id: risk_management
+    question: "What does the risk management system for high-risk AI require?"
+    expected_any:
+      - "risk management system shall be established, implemented, documented and maintained"
+      - "continuous iterative process planned and run throughout the entire lifecycle"
+
+  - id: data_governance
+    question: "What are the data and data governance requirements for high-risk AI?"
+    expected_any:
+      - "training, validation and testing data sets that meet the quality criteria"
+
+  - id: accuracy_robustness
+    question: "What are the accuracy, robustness and cybersecurity requirements?"
+    expected_any:
+      - "appropriate level of accuracy, robustness and cybersecurity"
+
+  - id: deepfake_disclosure
+    question: "What must deployers disclose about deep fakes?"
+    expected_any:
+      - "generates or manipulates image, audio or video content constituting a deep fake, shall disclose"
+
+  - id: scope_subject_matter
+    question: "What does the AI Act regulate and cover?"
+    expected_any:
+      - "specific requirements for high-risk AI systems and obligations for operators"
+      - "harmonised rules for the placing on the market"
+
+  - id: ai_system_definition
+    question: "How is an AI system defined?"
+    expected_any:
+      - "‘AI system’ means a mac"
+      - "For the purposes of this Regulation, the following definitions apply"
+
+  - id: interaction_transparency
+    question: "What transparency risks arise when AI interacts with people?"
+    expected_any:
+      - "intended to interact with natural persons or to generate content may pose specific risks of impersonation"

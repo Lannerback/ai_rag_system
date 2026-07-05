@@ -15,6 +15,44 @@ gemini:
 
 
 
+# Retrieval Pipeline Configuration
+# Three-stage flow: wide vector recall -> cross-encoder rerank -> MMR diversity.
+retrieval:
+  candidate_k: 120   # initial vector-search pool (recall)
+  rerank_k: 30       # kept after cross-encoder reranking
+  final_k: 12        # fed into the LLM context after MMR
+  # Cosine-similarity floor on vector-recall candidates (range [-1, 1]).
+  # 0.0 (or absent) disables the filter. Measured gold-set first-hit scores span
+  # 0.705-0.822 (top-1 max 0.822), so 0.85 would drop ALL results. 0.5 leaves a
+  # safe margin below every gold hit while trimming off-topic tail noise. Raise
+  # toward ~0.68 for stricter filtering; re-check tests/eval/run_eval first.
+  min_similarity: 0.5
+
+# Reranking Configuration (cross-encoder second-pass scoring)
+reranking:
+  # Note: on the EU AI Act corpus the FlashRank MS-MARCO cross-encoders measurably
+  # DEGRADE recall/precision vs plain vector search (MRR 0.672 -> 0.513 on the gold set).
+  # bge-reranker-v2-m3 is a stronger, multilingual domain-appropriate replacement.
+  enabled: true
+  # Available options:
+  # 1. flashrank
+  # 2. bge
+  provider: "bge"
+  flashrank:
+    model: "ms-marco-MiniLM-L-12-v2"
+  bge:
+    model: "BAAI/bge-reranker-v2-m3"
+
+# Diversity Configuration (redundancy-aware final selection)
+# Disabled: comment out the whole block to skip MMR entirely (retrieval falls back
+# to the top final_k vector hits). Uncomment to re-enable.
+# diversity:
+#   # Available options:
+#   # 1. mmr
+#   strategy: "mmr"
+#   lambda_mult: 0.6   # 1.0 = pure relevance, 0.0 = pure diversity
+
+
 # Vector Store Configuration
 vector_store:
   # Available options: 
@@ -38,6 +76,8 @@ llm:
   # Set to 'azure' or 'gemini' to choose the AI provider you previsouly set (above)
   provider: "gemini"
   system_prompt: "You are a helpful assistant that answers questions based on the provided documentation. Reply in the same language as the question, unless otherwise specified." 
+  # Legacy raw-recall knob: no longer drives the /ask pipeline (see `retrieval:` above).
+  # Retained for retrieval-ranking regression tests that assert raw vector-search quality.
   default_k: 20
   # Azure OpenAI LLM
   azure:
@@ -57,6 +97,11 @@ llm:
 document_loader:
   chunk_size: 1200
   chunk_overlap: 150
+  # PDF partitioning strategy (unstructured):
+  #   hi_res - layout model + OCR; correct two-column reading order for legal PDFs.
+  #            Requires poppler + tesseract system binaries. Slow ingest (~8 min/doc).
+  #   fast   - pdfminer text layer; fast but interleaves dense two-column pages.
+  pdf_strategy: "fast"
   docs_directory: "docs"
   # directory of the pdf files that are scanned (images) and not proper text
   ocr_docs_dir: "ocr_docs"

@@ -18,6 +18,14 @@ from src.ai.vector_store_service.vector_store_provider import (
     FaissVectorStoreProvider,
     PgVectorStoreProvider,
 )
+from src.ai.rerankers.base_reranker import BaseReranker
+from src.ai.rerankers.reranker_provider import (
+    RerankerProvider,
+    FlashRankRerankerProvider,
+    BgeRerankerProvider,
+)
+from src.ai.diversity.base_diversity_selector import BaseDiversitySelector
+from src.ai.diversity.mmr_selector import MMRSelector
 
 
 class ServiceFactory:
@@ -34,6 +42,17 @@ class ServiceFactory:
     VECTOR_STORE_PROVIDERS = {
         "faiss": FaissVectorStoreProvider,
         "pgvector": PgVectorStoreProvider,
+    }
+
+    # Registry: configured reranker backend -> its provider. Add a backend here.
+    RERANKER_PROVIDERS = {
+        "flashrank": FlashRankRerankerProvider,
+        "bge": BgeRerankerProvider,
+    }
+
+    # Registry: configured diversity strategy -> its selector class.
+    DIVERSITY_SELECTORS = {
+        "mmr": MMRSelector,
     }
 
     @classmethod
@@ -77,6 +96,27 @@ class ServiceFactory:
         return cls._instances["vector_store_initializer"]
 
     @classmethod
+    def get_reranker(cls) -> BaseReranker | None:
+        """Return the configured reranker, or None when reranking is disabled."""
+        if not CONFIG["reranking"].get("enabled", False):
+            return None
+        if "reranker" not in cls._instances:
+            strategy = CONFIG["reranking"]["provider"]
+            provider: RerankerProvider = cls.RERANKER_PROVIDERS[strategy]()
+            cls._instances["reranker"] = provider.create_reranker()
+        return cls._instances["reranker"]
+
+    @classmethod
+    def get_diversity_selector(cls) -> BaseDiversitySelector | None:
+        """Return the configured diversity selector, or None when the block is absent."""
+        if not CONFIG.get("diversity"):
+            return None
+        if "diversity_selector" not in cls._instances:
+            strategy = CONFIG["diversity"]["strategy"]
+            cls._instances["diversity_selector"] = cls.DIVERSITY_SELECTORS[strategy]()
+        return cls._instances["diversity_selector"]
+
+    @classmethod
     def get_faiss_vector_store(cls) -> BaseVectorStore:
         """Back-compat: explicit FAISS store regardless of the configured backend."""
         if "faiss_vector_store" not in cls._instances:
@@ -92,6 +132,11 @@ class ServiceFactory:
             llm = cls.get_llm()
             vector_store = cls.get_vector_store()
 
-            rag_service = RagService(llm, VectorStoreFacade(vector_store))
+            rag_service = RagService(
+                llm,
+                VectorStoreFacade(vector_store),
+                cls.get_diversity_selector(),
+                reranker=cls.get_reranker(),
+            )
             cls._instances["rag_facade"] = RagFacade(rag_service)
         return cls._instances["rag_facade"]

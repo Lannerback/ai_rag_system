@@ -15,9 +15,11 @@ from src.ai.rag_facade import RagFacade
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(
-    level=logging.DEBUG, 
+    level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+for _noisy_logger in ("httpx", "httpcore", "huggingface_hub", "urllib3"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 from contextlib import asynccontextmanager
 from src.startup import initialize_vector_store, initialize_rag_facade
 

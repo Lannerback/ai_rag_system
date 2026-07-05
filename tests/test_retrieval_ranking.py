@@ -76,53 +76,78 @@ def ranking_store(test_schema_db):
     return store
 
 
-# The Article-1 "Subject matter" chunk ranked ~#95 before footer removal + task_type
-# embedding asymmetry; afterwards it ranks ~#22. This test guards that improved state:
-# the answer chunk must rank well (< IMPROVED_RANK_CEILING) and the top results must be
-# real content, not the page-footer boilerplate that used to dominate. Getting it fully
-# inside default_k=20 is left to a future reranking step.
-IMPROVED_RANK_CEILING = 40
+# The Article-1 "Subject matter" chunk must remain retrievable, and no page-footer
+# boilerplate may leak into the top results after ingestion cleanup + fast parsing.
+_TOP_N_FOR_FOOTER_CHECK = 20
 
 
 def _is_pure_footer(content: str) -> bool:
     stripped = content.strip()
-    return bool(re.fullmatch(r"\d+/144", stripped)) or stripped in (
-        "ELI: http://data.europa.eu/eli/reg/2024/1689/oj",
+    return (
+        bool(re.fullmatch(r"\d+/144", stripped))
+        or stripped.lower().startswith("eli: http")
     )
 
 
-def test_article_1_chunk_ranks_well_and_footers_are_gone(ranking_store):
-    """Guards the retrieval-quality improvement from ingestion cleanup + task_type.
-
-    After dropping Header/Footer/PageNumber elements and embedding with asymmetric
-    task_type, the Article-1 "Subject matter" chunk climbs from ~#95 to ~#22, and the
-    former top-of-list page-footer boilerplate no longer appears. If this regresses
-    (footers back on top, or the answer chunk ranks poorly again) the test fails.
-    """
-    default_k = CONFIG["llm"]["default_k"]
-
+def test_answer_chunk_retrievable_and_footers_absent(ranking_store):
+    """Guards ingestion quality: the Article-1 answer chunk is retrievable and page
+    footers (ELI permalinks, 'N/144' page markers) never leak into the top results."""
     results = ranking_store.search(QUESTION, k=2000)
 
     matches = [i for i, doc in enumerate(results) if ARTICLE_1_SNIPPET in doc["content"]]
-
-    # Manual-inspection output (visible when run with `-s`).
-    print(f"\n=== Retrieved {len(results)} chunks | Article-1 rank(s): {matches[:5]} "
-          f"(0-indexed, default_k={default_k}) ===")
-    for i, doc in enumerate(results[:20]):
-        mark = "  <-- ARTICLE 1" if ARTICLE_1_SNIPPET in doc["content"] else ""
-        print(f"[{i:>2}] p{doc['metadata'].get('page', '?')}: {doc['content'][:90]!r}{mark}")
-    if matches:  # show the answer chunk even if it ranks past #20
-        r = matches[0]
-        print(f"\n--- Article-1 chunk (rank {r}) ---\n{results[r]['content'][:400]}")
-
     assert matches, "Article 1 chunk not found in the collection at all"
 
-    article_1_rank = matches[0]
-    assert article_1_rank < IMPROVED_RANK_CEILING, (
-        f"Article 1 chunk ranks #{article_1_rank}, worse than the expected ~#22 "
-        f"(ceiling {IMPROVED_RANK_CEILING}); retrieval quality regressed."
+    top = results[:_TOP_N_FOR_FOOTER_CHECK]
+    footer_hits = [doc["content"][:40] for doc in top if _is_pure_footer(doc["content"])]
+    assert not footer_hits, (
+        f"Page-footer boilerplate leaked into top-{_TOP_N_FOR_FOOTER_CHECK}: {footer_hits}"
     )
 
-    top = results[: default_k]
-    footer_hits = [doc["content"][:40] for doc in top if _is_pure_footer(doc["content"])]
-    assert not footer_hits, f"Page-footer boilerplate leaked into top-{default_k}: {footer_hits}"
+
+# Quality floors for the gold set on the current pipeline (measured: R@10=1.0, R@12=1.0,
+# MRR~0.585 with fast parsing + BGE reranker + min_similarity=0.5, MMR disabled).
+# Guards against chunking/retrieval regressions.
+GOLD_RECALL_AT_10_FLOOR = 0.9
+GOLD_MRR_FLOOR = 0.55
+
+
+def test_gold_set_recall_meets_floor(ranking_store):
+    """Regression guard on retrieval quality using the verified EU AI Act gold set.
+
+    Runs the same retrieval the /ask pipeline uses (vector recall -> optional rerank
+    -> MMR) and asserts recall@10 and MRR stay above the floors established after the
+    chunking-quality fixes. A drop here means ingestion/chunking regressed.
+    """
+    from tests.eval.metrics import evaluate, load_gold
+
+    retrieval = CONFIG["retrieval"]
+    reranker = ServiceFactory.get_reranker()
+    mmr = ServiceFactory.get_diversity_selector()
+    min_similarity = retrieval.get("min_similarity", 0.0)
+
+    # Mirrors RagService._retrieve: vector recall -> similarity floor ->
+    # (optional rerank) -> (optional MMR, else top final_k).
+    def retrieve(question: str):
+        candidates = ranking_store.search(
+            question, k=retrieval["candidate_k"], with_embeddings=mmr is not None
+        )
+        if min_similarity > 0.0:
+            candidates = [c for c in candidates if c.get("score", 1.0) >= min_similarity]
+        if reranker is not None:
+            candidates = reranker.rerank(question, candidates, top_k=retrieval["rerank_k"])
+        if mmr is None:
+            return candidates[:retrieval["final_k"]]
+        return mmr.select(
+            candidates, top_k=retrieval["final_k"], lambda_mult=CONFIG["diversity"]["lambda_mult"]
+        )
+
+    report = evaluate(load_gold(), retrieve)
+    print("\n" + report.format("GOLD SET (pipeline)"))
+
+    assert report.recall_at(retrieval["final_k"]) >= GOLD_RECALL_AT_10_FLOOR, (
+        f"gold recall@{retrieval['final_k']} = {report.recall_at(retrieval['final_k']):.2f} "
+        f"below floor {GOLD_RECALL_AT_10_FLOOR}; chunking/retrieval regressed."
+    )
+    assert report.mrr() >= GOLD_MRR_FLOOR, (
+        f"gold MRR = {report.mrr():.3f} below floor {GOLD_MRR_FLOOR}; retrieval regressed."
+    )

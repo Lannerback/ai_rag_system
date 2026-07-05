@@ -10,16 +10,52 @@ The main flow is:
 
 ```text
 Source documents
--> document loaders
+-> document loaders (partition -> clean -> chunk_by_title -> legal tag)
 -> text chunks + metadata
--> embedding model
+-> embedding model (Gemini, asymmetric task types)
 -> pgvector tables
 -> user question
 -> query embedding
--> cosine similarity search in pgvector
--> top-k chunks
+-> STAGE 1: cosine-similarity vector recall (candidate_k)
+-> STAGE 2: min_similarity floor
+-> STAGE 3: BGE cross-encoder rerank (rerank_k)
+-> STAGE 4: MMR diversity (final_k)   [disabled -> top final_k]
 -> LLM prompt
 -> final answer + sources
+```
+
+### Retrieval pipeline flow chart
+
+```mermaid
+flowchart TD
+    Q[User question] --> E[Embed query<br/>Gemini RETRIEVAL_QUERY]
+    E --> S1[Stage 1: pgvector cosine recall<br/>candidate_k = 120]
+    S1 --> S2{Stage 2: score above min_similarity 0.5?}
+    S2 -- no --> DROP[drop candidate]
+    S2 -- yes --> S3[Stage 3: BGE cross-encoder rerank<br/>keep rerank_k = 30]
+    S3 --> MMRQ{diversity enabled?}
+    MMRQ -- no current --> TOP[take top final_k = 12]
+    MMRQ -- yes --> S4[Stage 4: MMR select<br/>lambda_mult 0.6, final_k = 12]
+    TOP --> CTX[Build context block]
+    S4 --> CTX
+    CTX --> LLM[LLM answer + sources]
+```
+
+### Ingestion flow chart
+
+```mermaid
+flowchart TD
+    F[Source file] --> P{PDF?}
+    P -- yes --> PP[partition_pdf<br/>strategy = fast]
+    P -- no --> PA[partition]
+    PP --> C[ElementCleaner<br/>drop headers/footers/markers]
+    PA --> C
+    C --> CB[chunk_by_title<br/>1200 chars, overlap 150]
+    CB --> TAG{PDF?}
+    TAG -- yes --> LT[LegalSectionTagger<br/>prepend Article heading]
+    TAG -- no --> EM
+    LT --> EM[Embed chunks<br/>Gemini RETRIEVAL_DOCUMENT]
+    EM --> DB[(pgvector: documents + chunks)]
 ```
 
 Main runtime components:
@@ -35,13 +71,22 @@ src/ai/service_factory.py
   Creates the selected LLM, embedder, vector store, and RAG facade
 
 src/ai/rag_service.py
-  Coordinates retrieval and answer generation
+  Coordinates the multi-stage retrieval pipeline and answer generation
 
 src/ai/document_loaders/
-  Reads documents and creates chunks
+  Reads documents, cleans layout noise, chunks, and tags legal sections
+
+src/ai/rerankers/
+  Cross-encoder rerankers (BGE active, FlashRank available) behind a registry
+
+src/ai/diversity/
+  MMR diversity selector (implemented; disabled via config)
 
 src/ai/vector_store_service/pgvector/
   Stores and searches chunks using PostgreSQL + pgvector
+
+src/common/timing.py
+  timed_step context manager; logs per-stage start/end/duration
 
 src/ingestion/
   Explicit command used to ingest source documents into pgvector
@@ -153,24 +198,47 @@ llm:
     embeddings_dimension: 3072
 ```
 
-Current retrieval `k`:
+Current retrieval pipeline configuration:
 
 ```yaml
-llm:
-  default_k: 20
+retrieval:
+  candidate_k: 120   # stage 1: wide vector-recall pool
+  rerank_k: 30       # stage 3: kept after cross-encoder reranking
+  final_k: 12        # stage 4: chunks fed into the LLM
+  min_similarity: 0.5  # stage 2: cosine floor on the pool
+
+reranking:
+  enabled: true
+  provider: "bge"                    # or "flashrank"
+  flashrank:
+    model: "ms-marco-MiniLM-L-12-v2"
+  bge:
+    model: "BAAI/bge-reranker-v2-m3"
+
+# diversity block is commented out -> MMR disabled -> pipeline returns top final_k
+# diversity:
+#   strategy: "mmr"
+#   lambda_mult: 0.6
 ```
+
+`llm.default_k: 20` still exists but is **legacy**: it no longer drives `/ask` and is used
+only by the raw vector-search regression tests.
 
 Current chunking configuration:
 
 ```yaml
 document_loader:
-  chunk_size: 500
-  chunk_overlap: 60
+  chunk_size: 1200
+  chunk_overlap: 150
+  pdf_strategy: "fast"   # unstructured partition_pdf strategy (fast | hi_res)
   docs_directory: "docs"
   ocr_docs_dir: "ocr_docs"
   llm_extractor_docs_dir: "llm_extractor_docs"
   scanned_docs_lang: "ara"
 ```
+
+See `architect-choices.md` for why these values were chosen (reranker, `min_similarity`
+threshold, MMR disabled, `fast` vs `hi_res`, chunk sizing).
 
 ## Embedding Model
 
@@ -196,6 +264,18 @@ GoogleGenerativeAIEmbeddings(
     api_key=os.getenv("GOOGLE_API_KEY"),
 )
 ```
+
+**Asymmetric task types.** Documents and queries are embedded with different Gemini
+`task_type` values, which map them into aligned but role-specific subspaces and materially
+improve retrieval quality:
+
+```text
+embed_documents -> task_type = RETRIEVAL_DOCUMENT
+embed_query     -> task_type = RETRIEVAL_QUERY
+```
+
+Requests are batched (100 texts/request) and retried with exponential backoff (`tenacity`)
+on transient Gemini errors.
 
 For this project, the model returns vectors with dimension:
 
@@ -413,41 +493,50 @@ Input directory:
 docs_directory: "docs"
 ```
 
-Libraries:
+Libraries (Unstructured, not LangChain splitters):
 
 ```text
-DirectoryLoader
-UnstructuredFileLoader
-RecursiveCharacterTextSplitter
+unstructured.partition.pdf.partition_pdf   (PDFs)
+unstructured.partition.auto.partition      (other file types)
+unstructured.chunking.title.chunk_by_title
+ElementCleaner        (local: element_cleaner.py)
+LegalSectionTagger    (local: legal_section_tagger.py)
 ```
 
-The loader uses:
-
-```python
-DirectoryLoader(
-    directory,
-    glob="**/*",
-    loader_cls=UnstructuredFileLoader,
-    loader_kwargs={"mode": "paged"},
-)
-```
-
-Then it splits loaded documents with:
-
-```python
-RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=60,
-)
-```
-
-Metadata behavior:
+Pipeline (`load_documents`):
 
 ```text
-source comes from LangChain/Unstructured metadata
-page_number is normalized to page
-languages is normalized to language
-loader is inferred later as text if no OCR or LLM flags exist
+1. Partition file into typed elements.
+   - PDFs: partition_pdf(strategy=pdf_strategy)  # "fast" text-layer parse
+   - Others: partition(...)
+2. ElementCleaner.clean(elements)
+   - drops Header/Footer/PageNumber/PageBreak/Image categories
+   - drops standalone number markers like "(9)", ELI footers, running-header leaks
+   - drops fragments shorter than 15 chars
+3. chunk_by_title(
+       max_characters=1200,
+       new_after_n_chars=960,          # 0.8 * chunk_size
+       combine_text_under_n_chars=420, # 0.35 * chunk_size
+       overlap=150,
+       multipage_sections=True,
+   )
+4. For PDFs only: LegalSectionTagger.tag(texts)
+   - prepends the governing "Article N ..." heading to continuation chunks
+```
+
+**Why this replaced fixed-size splitting.** The old `RecursiveCharacterTextSplitter`
+(500/60) cut mid-clause. `chunk_by_title` breaks on document structure (titles/sections),
+and the cleaner + tagger remove layout noise and re-anchor orphaned legal clauses. Rationale
+in `architect-choices.md` §5–§7.
+
+Metadata behavior — an allowlist is kept, everything else is dropped:
+
+```text
+_KEEP_METADATA_KEYS = ("source", "filename", "page", "language")
+source    = the file path
+filename  = Unstructured filename
+page      = element page_number
+language  = first detected language
 ```
 
 Saved metadata examples:
@@ -455,6 +544,7 @@ Saved metadata examples:
 ```python
 {
     "source": "docs/my-rag-system.md",
+    "filename": "my-rag-system.md",
     "page": 1,
     "language": "eng",
 }
@@ -778,27 +868,35 @@ The endpoint calls:
 ```text
 RagFacade.answer_question
 -> RagService.answer_question
--> RagService._get_relevant_docs
+-> RagService._retrieve        # the multi-stage pipeline
 -> VectorStoreFacade.search
 -> PgVectorStore.search
 -> ChunkRepository.search
 ```
 
-The retrieval flow is:
+The retrieval flow is (`RagService._retrieve`):
 
 ```text
-1. User sends a question.
-2. RagService reads default_k from config.yaml.
-3. PgVectorStore loads the configured collection.
-4. CollectionValidator checks provider/model/dimension.
-5. The question is embedded using the same embedding model used during ingestion.
-6. Query embedding dimension is checked against collection dimensions.
-7. pgvector searches chunks by cosine distance.
-8. The closest k chunks are returned.
-9. RagService formats the chunks into a context block.
+1.  User sends a question.
+2.  RagService reads candidate_k / rerank_k / final_k / min_similarity from config.yaml.
+3.  PgVectorStore loads the configured collection; CollectionValidator checks
+    provider/model/dimension.
+4.  The question is embedded (RETRIEVAL_QUERY task type); dimension is checked.
+5.  STAGE 1 - pgvector returns the candidate_k (120) nearest chunks by cosine distance,
+    each with score = 1 - cosine_distance. Embeddings are fetched only if MMR is enabled.
+6.  STAGE 2 - candidates with score < min_similarity (0.5) are dropped.
+7.  STAGE 3 - if reranking.enabled, the BGE cross-encoder rescores the pool and keeps
+    the top rerank_k (30).
+8.  STAGE 4 - if the diversity block is present, MMR selects final_k (12); otherwise the
+    top final_k are taken directly. (Currently MMR is disabled.)
+9.  RagService formats the final chunks into a context block.
 10. The context and question are sent to the LLM.
 11. The API returns the answer and deduplicated sources.
 ```
+
+Each stage is wrapped in `timed_step` (`src/common/timing.py`) and logs
+`[TIMING] <stage> | start=... end=... duration=...s`. The BGE reranker additionally logs
+`bge_model_load` (once per process, lazy) and `bge_inference` (per request).
 
 ## pgvector Search Algorithm
 
@@ -811,11 +909,12 @@ src/ai/vector_store_service/pgvector/repositories/chunk_repository.py
 Code:
 
 ```python
+distance = Chunk.embedding.cosine_distance(query_embedding).label("distance")
 stmt = (
-    select(Chunk)
+    select(Chunk, distance)
     .options(joinedload(Chunk.document))
     .where(Chunk.collection_id == collection_id)
-    .order_by(Chunk.embedding.cosine_distance(query_embedding))
+    .order_by(distance)
     .limit(k)
 )
 ```
@@ -826,8 +925,17 @@ This means:
 filter to one collection
 compute cosine distance between each stored chunk embedding and the query embedding
 sort by smallest cosine distance
-return the first k rows
+return the first k rows, each with its distance
 ```
+
+`PgVectorStore._to_result` converts distance to a similarity score before returning:
+
+```python
+"score": 1.0 - distance   # cosine_distance == 1 - cosine_similarity
+```
+
+This `score` is what the pipeline's `min_similarity` floor (stage 2) compares against, and
+what MMR uses as the relevance signal. `k` here is `candidate_k` (120), not `final_k`.
 
 The algorithm is nearest-neighbor search using cosine distance.
 
@@ -848,37 +956,83 @@ larger value = less similar
 
 The current migration does not create an HNSW or IVFFlat approximate-nearest-neighbor index. So the current implementation is an exact ordered pgvector search for the current dataset size. For larger datasets, a production improvement would be adding an ANN index, for example HNSW, and tuning it.
 
+## Reranking (Stage 3)
+
+After the vector recall + similarity floor, a **local cross-encoder** rescores the pool.
+Config: `reranking:` block; wiring: `ServiceFactory.get_reranker()` +
+`ServiceFactory.RERANKER_PROVIDERS` registry.
+
+```text
+active provider: bge  (BAAI/bge-reranker-v2-m3)
+available:       flashrank (ms-marco-MiniLM-L-12-v2)
+enabled flag:    reranking.enabled = true
+```
+
+A cross-encoder feeds `(query, chunk)` **together** through one transformer forward pass
+(full cross-attention) and emits a single relevance score — far more accurate than the
+independent bi-encoder embeddings used in stage 1, and far more expensive, which is why it
+runs only on the `candidate_k` pool. Implementation: `src/ai/rerankers/bge/bge_reranker.py`
+loads the model lazily on first `rerank()` (then caches it), and returns the top `rerank_k`.
+
+FlashRank was tried first and **degraded** ranking on legal text (MRR 0.672 → 0.513);
+BGE replaced it. Full rationale and a FlashRank-vs-BGE comparison table are in
+`architect-choices.md` §3.
+
+## Diversity / MMR (Stage 4)
+
+Maximal Marginal Relevance is implemented in `src/ai/diversity/mmr_selector.py` but the
+`diversity:` config block is **commented out**, so `_retrieve` currently returns the top
+`final_k` reranked chunks directly.
+
+When enabled, MMR greedily picks chunks maximizing:
+
+```text
+score = lambda_mult * relevance(doc) - (1 - lambda_mult) * max_cosine_sim(doc, selected)
+```
+
+- `relevance` comes from the reranker's ordering (linear rank → [0,1]).
+- redundancy = cosine similarity to already-selected chunks, over their stored embeddings.
+- `lambda_mult = 0.6` leans toward relevance (1.0 = pure relevance, 0.0 = pure diversity).
+- MMR is the **only** consumer of chunk embeddings, so `_retrieve` fetches embeddings from
+  pgvector (`with_embeddings=True`) only when MMR is active.
+
+It was disabled because, after the ingestion-cleanup fixes, the reranked top-12 were already
+on-topic and diverse; MMR added embedding-fetch cost with no gold-set recall gain and risked
+demoting genuinely relevant adjacent legal clauses. See `architect-choices.md` §4.
+
+## Timing Instrumentation
+
+`src/common/timing.py` provides a `timed_step(logger, name)` context manager that logs
+`[TIMING] <name> | start=<iso> end=<iso> duration=<s>` around each stage. Instrumented
+stages: `vector_search`, `similarity_filter`, `rerank`, `mmr_select`, `llm_generate`, plus
+`bge_model_load` (once per process) and `bge_inference` (per request). Noisy third-party
+HTTP loggers (`httpx`, `httpcore`, `huggingface_hub`, `urllib3`) are pinned to WARNING in
+`src/api.py` so these timing lines are readable.
+
 ## Meaning Of `k`
 
-`k` is the number of chunks retrieved from the vector database.
-
-Current config:
+There is no longer a single `k`. The pipeline uses three staged sizes:
 
 ```yaml
-llm:
-  default_k: 20
+retrieval:
+  candidate_k: 120   # nearest chunks pulled from pgvector (recall)
+  rerank_k: 30       # kept after BGE reranking
+  final_k: 12        # passed into the LLM prompt
 ```
 
-In this project:
+- `candidate_k` controls **recall**: how wide the initial net is. Larger = more likely to
+  contain the answer, but more work for the reranker.
+- `rerank_k` is the reranked shortlist size.
+- `final_k` controls **generation breadth**: how many chunks reach the LLM.
+
+Tradeoff on `final_k`:
 
 ```text
-k = 20
+larger final_k -> more context, higher chance of including the answer, more noise, more tokens
+smaller final_k -> less context, less noise, lower token cost, higher chance of missing evidence
 ```
 
-That means the retriever asks pgvector for the 20 nearest chunks.
-
-Tradeoff:
-
-```text
-larger k -> more context, higher chance of including the answer, more noise, more tokens
-smaller k -> less context, less noise, lower token cost, higher chance of missing evidence
-```
-
-Retrieval breadth is controlled by `k`:
-
-```text
-`k` controls how many semantically nearest chunks are passed into the generation step.
-```
+`llm.default_k: 20` is legacy and only used by raw vector-search regression tests.
 
 ## Meaning Of `p` And `top_p`
 
@@ -908,24 +1062,10 @@ Lower `top_p` makes output more conservative. Higher `top_p` allows more variety
 
 ### Retrieval `top_p`
 
-There is a TODO in `RagService`:
-
-```python
-# TODO: apply top_p_filter to the relevant docs
-# relevant_docs = top_p_filter(relevant_docs, p=0.9)
-```
-
-That retrieval `top_p` filter is not active in the current code.
-
-If implemented, a retrieval top-p filter would usually mean:
-
-```text
-1. Retrieve candidate chunks.
-2. Convert scores into normalized weights.
-3. Keep the smallest set of chunks whose cumulative weight reaches p.
-```
-
-But today the active retrieval parameter is only `k`.
+There is no retrieval-side `top_p` filter. Candidate pruning is done by the
+`min_similarity` cosine floor (stage 2) and the staged `candidate_k`/`rerank_k`/`final_k`
+sizes, not by a cumulative-probability cutoff. `top_p` applies only to LLM generation
+sampling (above).
 
 ## Prompt Construction
 
@@ -1037,18 +1177,30 @@ docker exec pgvector psql -U admin -d rag -c "SELECT c.name, c.model, c.dimensio
 System summary:
 
 ```text
-This RAG system separates ingestion from runtime startup. Ingestion reads documents, splits them into overlapping chunks, embeds each chunk with Gemini embeddings, and stores the chunk text, vector, and metadata in PostgreSQL with pgvector. At query time, the question is embedded with the same model, pgvector ranks chunks by cosine distance, the top k chunks are inserted into the prompt, and the LLM generates an answer grounded in those excerpts.
+This RAG system separates ingestion from runtime startup. Ingestion partitions documents
+into typed elements, strips layout noise, chunks them section-aware with chunk_by_title,
+tags legal continuation chunks with their Article heading, embeds each chunk with Gemini
+(RETRIEVAL_DOCUMENT task type), and stores text + vector + metadata in PostgreSQL/pgvector.
+At query time the question is embedded (RETRIEVAL_QUERY), then a three-stage pipeline runs:
+wide cosine-similarity vector recall -> min_similarity floor -> BGE cross-encoder rerank ->
+(optional MMR, currently disabled) -> top final_k chunks into the prompt, and the LLM
+generates an answer grounded in those excerpts.
 ```
 
 Key technical points:
 
 ```text
 Current vector DB: PostgreSQL + pgvector
-Current embedding model: models/gemini-embedding-001
+Current embedding model: models/gemini-embedding-001 (asymmetric doc/query task types)
 Current embedding dimensions: 3072
 Current collection: default
-Current retrieval algorithm: cosine-distance nearest-neighbor search
-Current k: 20
-Current retrieval p: not implemented
+Stage 1 retrieval: cosine-distance nearest-neighbor search, candidate_k = 120
+Stage 2 filter: min_similarity = 0.5 cosine floor
+Stage 3 reranker: BGE bge-reranker-v2-m3 (enabled), rerank_k = 30
+Stage 4 diversity: MMR implemented but disabled -> top final_k
+Current final_k: 12
+Current chunking: chunk_by_title, 1200 chars / 150 overlap, fast PDF strategy
+Legacy default_k: 20 (regression tests only)
+Current retrieval p: not implemented (pruning is min_similarity + staged k)
 Current LLM top_p: 0.95 for generation sampling
 ```
