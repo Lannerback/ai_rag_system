@@ -1,594 +1,353 @@
-
 # RAG Roadmap
 
-
-# Part 1 — High-Priority Improvements (Implement These)
-
-These are the improvements that will teach the largest amount about RAG systems while making the project significantly stronger.
+This roadmap lists only the improvements **not yet implemented**. Items already shipped in
+this codebase have been removed (see "Already Accomplished" below for the audit trail).
 
 ---
 
-## 1. Replace FAISS with PostgreSQL + pgvector — Accomplished
+## Already Accomplished (removed from the backlog)
 
-Status: **Accomplished**
+These were on the original roadmap and are now done — do not re-plan them:
 
-Implemented:
+- **PostgreSQL + pgvector backend** — `embedding_collections → documents → chunks` schema,
+  Alembic migration, cosine-distance retrieval, JSONB metadata + promoted columns.
+- **B-tree indexing** — `ix_documents_collection_id`, `ix_chunks_collection_id`,
+  `ix_chunks_document_id`, the `uq_documents_collection_source` unique constraint, and a GIN
+  index on `chunks.metadata` all exist in `models.py`.
+- **Reranking** — BGE cross-encoder (`BAAI/bge-reranker-v2-m3`) with a FlashRank fallback,
+  behind a provider registry.
+- **Similarity thresholds** — `retrieval.min_similarity = 0.5` cosine floor with abstention
+  (`no_docs_found`) when nothing clears it.
+- **Incremental indexing** — SHA-256 per-document checksums, skip-unchanged, replace-changed,
+  prune-removed (`DocumentChangeDetector`).
+- **Ingestion separated from API startup** — explicit `python -m src.ingestion` command.
+- **Retrieval evaluation framework** — `tests/eval/` gold set, `Recall@k`, `MRR`, regression
+  floors in `tests/test_retrieval_ranking.py`.
+- **Structure-aware chunking** — Unstructured `chunk_by_title` + `ElementCleaner` +
+  `LegalSectionTagger`, replacing the fixed-size character splitter.
 
-- PostgreSQL + pgvector backend
-- pgvector Docker Compose setup
-- Alembic migration for vector schema
-- `embedding_collections`, `documents`, and `chunks` tables
-- Gemini embedding model integration
-- Collection validation by provider, model, and dimension
-- Explicit ingestion command separated from API startup
-- pgvector cosine-distance retrieval
-- JSONB metadata storage with promoted metadata columns
+---
 
-### Why
+# Part 1 — High-Priority Improvements
 
-Move from a local vector index to a real database-backed architecture.
+---
 
-Learn:
+## Step 1 — Conditional Metadata Filtering (query-driven)
 
-- pgvector
-- Vector indexes
-- Cosine similarity search
-- Persistent storage
-- JSONB metadata
-- Database design
-- SQL vector queries
+**Problem.** Retrieval ignores metadata entirely: every `/ask` does a full-corpus cosine
+scan. Today's stored metadata (`source`, `page`, `language`, `loader`) is *citation-only* —
+`page`/`source` are **discovered** attributes (the whole point of retrieval is to find which
+page/document is relevant), so they cannot be used as a pre-filter. This step adds
+filtering on attributes that are **knowable from the question itself** (e.g. `country`,
+`document_type`, `language`), and applies the filter **conditionally**: only when the query
+actually names one.
 
-Store:
+### Pattern: Self-Querying / Query Construction
 
-- chunk_id
-- document_id
-- source
-- page
-- content
-- metadata (JSONB)
-- embedding
-- timestamps
+This is the established "self-query retriever" / "auto-retriever" pattern. One extra LLM call
+in front of the existing pipeline turns a natural-language question into
+`(structured filter, cleaned semantic query)`, then hybrid search combines an exact SQL
+`WHERE` with the existing vector `ORDER BY`.
 
-Expected architecture:
-
+```text
+user question
+  -> QueryAnalyzer (LLM, structured output)
+       -> filter: {"country": "France"} | {}   (empty when none detected)
+       -> cleaned_query: filter phrasing stripped, topic preserved
+  -> validate filter value against closed vocabulary (distinct DB values / config enum)
+  -> embed cleaned_query (RETRIEVAL_QUERY)
+  -> pgvector search with conditional WHERE metadata @> filter
+  -> min_similarity floor -> BGE rerank -> (MMR) -> final_k
+  -> existing answer_question generation call (unchanged)
 ```
-Document
-    ↓
-Chunking
-    ↓
-Embedding
-    ↓
-PostgreSQL + pgvector
-    ↓
-Similarity search
+
+Note this is **2 LLM calls total**, not 3: analysis + the existing generation call. The
+"go back to the LLM with candidates" step is the current `RagService.answer_question`
+generation — unchanged.
+
+### How the LLM builds the filter and refines the query
+
+The analyzer LLM receives the raw question plus the list of **filterable fields and their
+allowed values**, and must return a schema-constrained JSON object. It does two things:
+
+1. **Extract filters** — map any phrase that names a filterable attribute to a field/value.
+2. **Rewrite the query** — remove the filter phrasing so the embedding represents only the
+   topic. This matters: if you embed `"France's obligations in the French market"`, the
+   embedder has no idea "French market" is a filter instruction and drags the vector toward
+   country semantics, diluting the real topic and making the filter and the embedding fight
+   over the same signal. The `WHERE` clause carries the country deterministically; the
+   embedding should carry only "obligations under Article 6".
+
+Example prompt shape (analyzer):
+
+```text
+System: You convert a user question into a retrieval filter and a cleaned search query.
+Filterable fields:
+  - country: one of [France, Germany, Italy, Spain]   (null if the question names none)
+Rules:
+  - Only set a field if the question explicitly refers to it.
+  - Remove the words that express the filter from cleaned_query.
+  - Never invent a value outside the allowed list; use null if unsure.
+Return JSON matching the schema.
+
+User: "What are France's obligations in the French market under Article 6?"
+
+-> {"country": "France",
+    "cleaned_query": "obligations under Article 6"}
+```
+
+If the question names no country:
+
+```text
+User: "What are the transparency obligations for high-risk systems?"
+-> {"country": null,
+    "cleaned_query": "transparency obligations for high-risk systems"}
+```
+
+### Pydantic schema (structured output, not free-text JSON)
+
+Use Gemini structured/function-calling output bound to a Pydantic model — never regex-parse
+free text.
+
+```python
+from typing import Optional
+from pydantic import BaseModel, Field
+
+class QueryFilter(BaseModel):
+    country: Optional[str] = Field(
+        None, description="One of the known countries, or null if unspecified."
+    )
+
+class AnalyzedQuery(BaseModel):
+    filter: QueryFilter
+    cleaned_query: str
+```
+
+`filter.model_dump(exclude_none=True)` yields the `{}`-or-`{"country": ...}` dict passed to
+the store as a JSONB containment predicate (`metadata @> :filter`), served by the existing
+GIN index. Promote `country` to a real column + b-tree index if it becomes high-cardinality
+or hot.
+
+### Component design (mirrors existing Strategy/registry patterns)
+
+- New `QueryAnalyzer` component (`src/ai/query_analysis/`), swappable behind a base class:
+  - `LlmQueryAnalyzer` — the structured-output call above (default).
+  - `NoopQueryAnalyzer` — returns empty filter + original query (feature-flag off).
+- Use a **cheaper/faster model** for analysis (e.g. `gemini-flash`), not the generation model.
+  Add a second lightweight LLM role in `ServiceFactory` (see Step 4, provider split).
+- Thread an optional `filters: dict | None` through
+  `VectorStoreFacade.search → PgVectorStore.search → ChunkRepository.search`, applied as an
+  extra `.where(Chunk.extra_metadata.op("@>")(filters))` **only when non-empty**. Everything
+  downstream (`min_similarity`, rerank, MMR) is untouched.
+
+### Safety rules
+
+- **Validate against a closed vocabulary** before filtering. If the LLM returns `"French"`
+  but stored values are `"France"`, a strict-equality filter silently returns zero rows —
+  check the extracted value against known distinct values; if no match, treat as no filter.
+- **Fail open.** On extraction error/timeout/malformed output, fall back to unfiltered
+  full-corpus search. A missed filter degrades to today's behavior; a bad filter returns
+  zero rows and looks like "no relevant documentation".
+- **Don't over-strip** `cleaned_query` — filter phrasing out, semantic content (e.g.
+  "Article 6") in. Needs its own eval (extraction accuracy + rewrite quality), reusing the
+  `tests/eval` harness.
+- Only worth it where the filterable field has **real coverage** in the corpus.
+
+### Config sketch
+
+```yaml
+query_analysis:
+  enabled: true
+  provider: "gemini"
+  model: "gemini-flash"          # cheaper than the generation model
+  filterable_fields:
+    country: ["France", "Germany", "Italy", "Spain"]
 ```
 
 ---
 
-## 2. Add B-Tree Indexing For pgvector Tables
+## Step 2 — Unify Chunk + Metadata Into One Object (anti-misalignment) + Pydantic Conversion
 
-### Why
+**Problem.** Document loaders return two index-aligned lists —
+`texts: List[str]` and `metadatas: List[dict]` (`text_document_loader.py`,
+`ocr_document_loader.py`, `llm_extractor_document_loader.py`). The invariant "`texts[i]`
+belongs to `metadatas[i]`" is enforced only by convention. Any future transform that maps
+over one list but not the other (dedup, filter, reorder) will silently attach the **wrong
+metadata to a chunk**, which then gets embedded and permanently stored with the wrong
+page/source — corrupting citations for every future query that retrieves it. This is why
+loaders currently must build both lists in lockstep in a single loop.
 
-The pgvector backend currently filters chunks by collection before vector search:
+**Fix.** Introduce a single Pydantic `DocumentChunk` carrying content + metadata together,
+making misalignment structurally impossible.
 
-```sql
-WHERE chunks.collection_id = ...
-ORDER BY chunks.embedding <=> query_embedding
-LIMIT k
+```python
+from typing import Optional
+from pydantic import BaseModel
+
+class ChunkMetadata(BaseModel):
+    source: str
+    filename: Optional[str] = None
+    page: Optional[int] = None
+    language: Optional[str] = None
+    loader: Optional[str] = None
+    # open extension bag mapped to chunks.metadata JSONB
+    extra: dict = {}
+
+class DocumentChunk(BaseModel):
+    content: str
+    metadata: ChunkMetadata
 ```
 
-A B-tree index helps PostgreSQL quickly find rows for a specific collection, document, or source instead of scanning the full table.
+### Scope of the refactor
 
-Learn:
+- `BaseDocumentLoader.load_documents()` returns `List[DocumentChunk]` instead of
+  `Tuple[List[str], List[dict]]`. Update all three loaders + `DocumentLoaderFacade`.
+- `PgVectorStore.add_documents` / `CollectionWriter` / `source_grouping` consume
+  `List[DocumentChunk]` (group by `chunk.metadata.source`).
+- `ChunkMetadataMapper.to_columns` accepts `ChunkMetadata`; `to_metadata` returns one on read
+  so the retrieval path is also typed end-to-end.
+- Retrieval results (`PgVectorStore.search`) return typed objects (e.g. a
+  `RetrievedChunk(content, metadata, score, embedding?)`) instead of loose dicts, so
+  rerankers/MMR/`RagService` stop indexing `doc["content"]` / `doc["metadata"]`.
 
-- PostgreSQL B-tree indexes
-- query planning
-- `EXPLAIN ANALYZE`
-- database performance basics
-- indexed joins and filters
-- retrieval scalability
+**Do this before or alongside Step 1** — the metadata-filtering plumbing is cleaner on a
+typed metadata object than on loose dicts, and the `filterable_fields` map directly onto
+`ChunkMetadata`/`extra` keys.
 
-Add indexes such as:
+### Broader Pydantic conversion
 
-```sql
-CREATE INDEX idx_documents_collection_source
-ON documents(collection_id, source);
-
-CREATE INDEX idx_chunks_collection_id
-ON chunks(collection_id);
-
-CREATE INDEX idx_chunks_document_id
-ON chunks(document_id);
-```
-
-Use `EXPLAIN ANALYZE` to compare query plans before and after indexing.
-
-Important distinction:
-
-- B-tree indexes speed up relational filters and joins.
-- pgvector HNSW or IVFFlat indexes speed up vector nearest-neighbor search.
-
-This should be implemented before partitioning. Partitioning is only needed once table size or collection count makes indexed single-table search too slow.
+Extend typed models to the API and config edges already in flight:
+- API `Question`/`Answer` already use Pydantic — extend `Answer.sources` to a typed
+  `Source` model (source, page, score) instead of `list[Dict]`.
+- Consider a typed settings model over `config.yaml` (replacing raw `CONFIG[...]` dict
+  access) for validation-at-load and autocomplete.
 
 ---
 
-## 3. Add Metadata Filtering
+## Step 3 — Hybrid Search (semantic + BM25)
 
-Currently retrieval ignores metadata.
+Current retrieval is semantic-only. Add lexical recall and fuse:
 
-Support filters such as:
+```text
+semantic (pgvector cosine) + BM25 / ts_rank keyword search
+  -> Reciprocal Rank Fusion
+  -> BGE rerank -> final_k
+```
 
-- language
-- document_type
-- source
-- tags
-- category
-
-Future-ready fields:
-
-- tenant
-- department
-
-Learn:
-
-- filtered retrieval
-- pre-filter vs post-filter
-- retrieval architecture
-- enterprise RAG
+Postgres can do the lexical side natively (`tsvector` + GIN), avoiding a second engine.
+Learn: BM25, lexical vs semantic recall, RRF, when hybrid beats pure semantic (exact terms,
+codes, names — common in legal text).
 
 ---
 
-## 4. Add Reranking
+## Step 4 — Separate Provider Abstraction (embedding / generation / analysis / reranker)
 
-Current:
-
-```
-Query
- ↓
-Vector Search
- ↓
-LLM
-```
-
-Target:
-
-```
-Query
- ↓
-Vector Search (Top 30-50)
- ↓
-Reranker
- ↓
-Top 5-8
- ↓
-LLM
-```
-
-Learn:
-
-- candidate retrieval
-- cross encoders
-- relevance scoring
-- retrieval precision
-
-Possible implementations:
-
-- CrossEncoder (SentenceTransformers)
-- Cohere Rerank
-- Jina AI
-- Voyage
-- LLM-based reranking
-
----
-
-## 5. Add Hybrid Search
-
-Current system performs semantic search only.
-
-Implement:
-
-```
-Semantic Search
-        +
-BM25 Keyword Search
-        ↓
-Merge
-        ↓
-Reranker
-```
-
-Learn:
-
-- BM25
-- lexical retrieval
-- Reciprocal Rank Fusion
-- hybrid pipelines
-
-Understand when hybrid retrieval is better than semantic retrieval alone.
-
----
-
-## 6. Add Similarity Thresholds
-
-Instead of always sending retrieved chunks to the LLM:
-
-```
-retrieve
-    ↓
-filter by score
-    ↓
-if nothing relevant:
-    "I don't have enough information."
-```
-
-Learn:
-
-- calibrated thresholds
-- abstention
-- hallucination reduction
-
----
-
-## 7. Return Retrieval Scores
-
-Every retrieved chunk should include:
-
-- similarity score
-- reranker score
-- final ranking position
-
-Useful for:
-
-- debugging
-- evaluation
-- threshold tuning
-- visual inspection
-
----
-
-## 8. Stable Chunk IDs
-
-Every chunk should have a deterministic ID.
-
-Example:
-
-```
-refund_policy.pdf::page3::chunk5
-```
-
-Learn:
-
-- traceability
-- citation systems
-- incremental indexing
-- debugging
-
----
-
-## 9. Incremental Indexing
-
-Avoid rebuilding everything.
-
-Implement:
-
-- document hashing
-- chunk hashing
-- modified documents
-- deleted documents
-- new documents
-
-Learn:
-
-- ingestion pipelines
-- synchronization
-- index maintenance
-
----
-
-## 10. Move Ingestion Outside API Startup
-
-Separate ingestion from serving.
-
-Target:
-
-```
-ingest.py
-    ↓
-build vector index
-
-API
-    ↓
-load existing index
-```
-
-Learn:
-
-- deployment architecture
-- offline indexing
-- serving vs ingestion separation
-
----
-
-## 11. Source Citations
-
-Current project returns source metadata.
-
-Improve by attaching citations directly to answers.
-
-Example:
-
-```
-Answer...
-
-[Source: refund_policy.pdf, page 4]
-```
-
-Learn:
-
-- grounded generation
-- explainability
-- answer traceability
-
----
-
-## 12. Prompt Injection Defenses
-
-Treat retrieved documents as untrusted input.
-
-Learn:
-
-- prompt injection
-- secure prompting
-- context isolation
-- retrieval security
-
----
-
-## 13. Retrieval Evaluation Framework
-
-One of the biggest improvements.
-
-Create:
-
-```
-eval/
-    questions.json
-```
-
-Example:
-
-- question
-- expected source
-- expected answer keywords
-
-Measure:
-
-- Recall@k
-- Precision@k
-- MRR
-- nDCG
-- latency
-- groundedness
-- answer correctness
-
-Learn how professional RAG systems are evaluated.
-
----
-
-## 14. Better Chunking Strategies
-
-Compare:
-
-- RecursiveCharacterTextSplitter
-- semantic chunking
-- markdown-aware chunking
-- sentence chunking
-
-Experiment with:
-
-- chunk size
-- overlap
-- structure-aware splitting
-
-Learn that chunking is one of the most important design decisions in RAG.
-
----
-
-## 15. Better Provider Abstraction
-
-Currently one provider config selects both LLM and embeddings.
-
-Separate:
+Today one `llm.provider` selects both chat and embeddings. Split into independent roles:
 
 - embedding provider
 - generation provider
-- reranker provider
+- query-analysis provider (Step 1 — should be a cheap model)
+- reranker provider (already separate)
 
-Learn modular AI architecture.
+Learn modular AI architecture; unblocks using a small model for analysis and a strong one for
+generation.
 
 ---
 
-## 16. Logging and Observability
+## Step 5 — Surface Retrieval Scores End-to-End
 
-Log:
+The vector `score` (`1 - cosine_distance`) is computed but not returned by the API, and the
+BGE reranker score is discarded after sorting. Attach to each returned chunk:
 
-- retrieved chunks
-- similarity scores
-- reranker scores
-- latency
-- tokens
-- provider
-- failures
+- vector similarity score
+- reranker score
+- final rank position
 
-Useful for debugging and evaluation.
+Surface in the `/ask` response and logs. Useful for debugging, threshold tuning, eval.
+
+---
+
+## Step 6 — Stable, Deterministic Chunk IDs
+
+Chunks have random UUIDs + a `chunk_index`. Add a deterministic human-readable ID:
+
+```text
+regulation_eu_2024_1689.pdf::page3::chunk5
+```
+
+Learn: traceability, citation systems, stable references across re-ingestion.
+
+---
+
+## Step 7 — Inline Source Citations
+
+The API returns source metadata as a list; attach citations directly to answer spans:
+
+```text
+Answer ... [Source: regulation_eu_2024_1689.pdf, page 4]
+```
+
+Learn: grounded generation, explainability, answer traceability.
+
+---
+
+## Step 8 — Prompt Injection Defenses
+
+Treat retrieved chunks as untrusted. Add context isolation / delimiting, instruction-hierarchy
+prompting, and basic detection. Learn: prompt injection, secure prompting, retrieval security.
+
+---
+
+## Step 9 — Observability
+
+Extend the existing `[TIMING]` instrumentation to structured logs of: retrieved chunk IDs,
+similarity + reranker scores, token counts, provider, latency per stage, failures. Feeds
+debugging and eval.
 
 ---
 
 # Suggested Order
 
-1. PostgreSQL + pgvector — accomplished
-2. B-tree indexing for pgvector tables
-3. Metadata filtering
-4. Retrieval scores
-5. Similarity thresholds
-6. Reranking
-7. Hybrid search
-8. Stable chunk IDs
-9. Source citations
-10. Better chunking
-11. Incremental indexing
-12. Retrieval evaluation
-13. Prompt injection defenses
-14. Better provider abstraction
-15. Observability
-16. Separate ingestion pipeline
+1. Unify chunk+metadata into `DocumentChunk` + Pydantic conversion (Step 2 — foundation)
+2. Conditional metadata filtering (Step 1 — headline feature; rides on the typed metadata)
+3. Surface retrieval scores (Step 5)
+4. Separate provider abstraction (Step 4)
+5. Hybrid search (Step 3)
+6. Stable chunk IDs (Step 6)
+7. Inline source citations (Step 7)
+8. Prompt injection defenses (Step 8)
+9. Observability (Step 9)
+
+> Steps 1 and 2 are the user-prioritized block. Do Step 2 (or at least the loader-side
+> `DocumentChunk`) first so Step 1's filter plumbing is built on typed metadata.
 
 ---
 
 # Part 2 — Nice to Have
 
-These are valuable but not essential for demonstrating strong RAG knowledge.
+Valuable but not essential.
 
----
-
-## Conversation History
-
-Maintain previous interactions.
-
-Learn:
-
-- memory
-- query rewriting
-- conversational retrieval
-
----
-
-## Query Rewriting
-
-Rewrite vague user questions before retrieval.
-
-Example:
-
-```
-"How does it work?"
-↓
-
-"How does the document ingestion pipeline work?"
-```
-
----
-
-## Streaming Responses
-
-Return tokens progressively.
-
-Useful for UX.
-
----
-
-## Multi-query Retrieval
-
-Generate several search queries from one user question.
-
-Retrieve with all of them.
-
-Merge results.
-
----
-
-## Context Compression
-
-Compress retrieved chunks before generation.
-
-Useful when documents are long.
-
----
-
-## Parent-Child Retrieval
-
-Retrieve child chunks but provide larger parent sections.
-
-Improves context quality.
-
----
-
-## Contextual Compression Retriever
-
-Filter irrelevant sentences inside retrieved chunks before sending them to the LLM.
-
----
-
-## Multiple Retrieval Strategies
-
-Allow switching between:
-
-- semantic
-- hybrid
-- keyword
-- reranked
-
-Compare evaluation results.
-
----
-
-## Multiple Embedding Models
-
-Experiment with:
-
-- Gemini
-- OpenAI
-- Voyage
-- BAAI BGE
-- Nomic
-- Jina
-
-Compare retrieval quality.
-
----
-
-## Approximate Search
-
-Experiment with pgvector HNSW indexes instead of exact search.
-
-Learn scalability trade-offs.
-
----
-
-## Advanced Citation Verification
-
-Verify that every generated claim is actually supported by retrieved chunks.
-
----
-
-## Dashboard
-
-Build a small interface showing:
-
-- retrieved chunks
-- scores
-- reranker output
-- final prompt
-- final answer
-
-Very useful for demos and debugging.
+- **Conversation history** — memory, conversational retrieval, follow-up query rewriting.
+- **Query rewriting** — expand vague questions before retrieval (complements Step 1's
+  cleaned-query rewrite; here it's about vagueness, not filters).
+- **Streaming responses** — progressive token output for UX.
+- **Multi-query retrieval** — generate several search queries per question, merge results.
+- **Context compression / contextual-compression retriever** — drop irrelevant sentences
+  inside chunks before generation.
+- **Parent-child retrieval** — retrieve small chunks, feed larger parent sections to the LLM.
+- **Multiple retrieval strategies** — switch semantic / hybrid / keyword / reranked, compare
+  on the eval set.
+- **Multiple embedding models** — compare Gemini / OpenAI / Voyage / BGE / Nomic / Jina.
+- **Approximate search** — pgvector HNSW instead of exact scan (no ANN index today); learn
+  scalability trade-offs.
+- **Advanced citation verification** — verify each generated claim is supported by a chunk.
+- **Dashboard** — visualize retrieved chunks, scores, reranker output, final prompt/answer.
 
 ---
 
 # Final Goal
 
-By implementing the **Part 1** improvements you will learn nearly every major component of modern RAG systems:
-
-- ingestion
-- chunking
-- embeddings
-- vector databases
-- metadata filtering
-- retrieval
-- hybrid search
-- reranking
-- prompt engineering
-- grounded generation
-- evaluation
-- observability
-- production-oriented architecture
-
+Implementing Part 1 covers nearly every major modern-RAG component: ingestion, structure-aware
+chunking, embeddings, vector databases, **query-driven metadata filtering**, hybrid retrieval,
+reranking, grounded generation, evaluation, observability, and production-oriented
+architecture.
